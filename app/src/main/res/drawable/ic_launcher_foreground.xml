@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Cyber Ring -->
+    <path
+        android:pathData="M54,18 A36,36 0 1,1 53.99,18 Z"
+        android:strokeWidth="3"
+        android:strokeColor="#00E5FF"
+        android:fillColor="#00000000" />
+
+    <!-- Inner Glowing Core -->
+    <path
+        android:pathData="M54,28 A26,26 0 1,1 53.99,28 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#FFD700"
+        android:fillColor="#1500E5FF" />
+
+    <!-- Center AI Predictor Nodes -->
+    <path
+        android:pathData="M44,48 h20 v12 h-20 z"
+        android:fillColor="#FF007A" />
+
+    <!-- Top Badge Symbol -->
+    <path
+        android:pathData="M54,34 L62,42 L46,42 Z"
+        android:fillColor="#00FF87" />
+
+    <path
+        android:pathData="M42,66 L54,78 L66,66 Z"
+        android:fillColor="#FFD700" />
+</vector>

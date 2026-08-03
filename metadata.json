@@ -1,0 +1,6 @@
+{
+  "name": "WinGo Predictor",
+  "description": "WinGo prediction app connected to period server, using ML algorithm for 50 period analysis, Big/Small, and dual probable numbers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
