@@ -1,5 +1,6 @@
 package com.example.data.model
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -10,5 +11,6 @@ data class PeriodRecord(
     val number: Int, // 0..9
     val bigSmall: String, // "BIG" (5-9) or "SMALL" (0-4)
     val color: String, // "GREEN", "RED", "VIOLET"
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val isRealVerified: Boolean = false
 )

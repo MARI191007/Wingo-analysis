@@ -101,7 +101,7 @@ fun HeaderBar(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "WINGOANALYST.COM LIVE",
+                        text = "YAARWIN / WINGO LIVE",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = LiveGreen,

@@ -9,6 +9,11 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import com.example.util.PeriodUtils
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -462,11 +467,15 @@ private fun injectYaarwinScraperScript(webView: WebView?) {
                     var parsedRecords = [];
                     list.forEach(function(item) {
                         if (item && (item.period || item.issueNumber || item.periodId || item.issue)) {
-                            parsedRecords.push({
-                                periodId: item.period || item.issueNumber || item.periodId || item.issue,
-                                number: item.number !== undefined ? item.number : (item.winningNumber !== undefined ? item.winningNumber : item.result),
-                                bigSmall: item.bigSmall || item.size || (item.number >= 5 ? 'BIG' : 'SMALL')
-                            });
+                            var pId = String(item.period || item.issueNumber || item.periodId || item.issue).replace(/\*/g, '').trim();
+                            var num = item.number !== undefined ? item.number : (item.winningNumber !== undefined ? item.winningNumber : item.result);
+                            if (num !== undefined && num !== null && !isNaN(parseInt(num))) {
+                                parsedRecords.push({
+                                    periodId: pId,
+                                    number: parseInt(num),
+                                    bigSmall: item.bigSmall || item.size || (parseInt(num) >= 5 ? 'BIG' : 'SMALL')
+                                });
+                            }
                         }
                     });
 
@@ -475,24 +484,51 @@ private fun injectYaarwinScraperScript(webView: WebView?) {
                     }
                 }
 
-                // Also scan active DOM nodes
+                // Also scan active DOM nodes & whole page text
                 var records = [];
+                var seenPeriods = {};
+
+                // 1. Scan entire page text for patterns like "*010570 3 Small" or "010570 3 Small"
+                var fullText = document.body ? (document.body.innerText || '') : '';
+                var globalRegex = /\*?(\d{5,20})[\s\n\t]+([0-9])[\s\n\t]+(BIG|SMALL|Big|Small)/gi;
+                var match;
+                while ((match = globalRegex.exec(fullText)) !== null) {
+                    var pId = match[1];
+                    var num = parseInt(match[2]);
+                    var bs = match[3].toUpperCase();
+                    if (!seenPeriods[pId]) {
+                        seenPeriods[pId] = true;
+                        records.push({
+                            periodId: pId,
+                            number: num,
+                            bigSmall: bs
+                        });
+                    }
+                }
+
+                // 2. Scan DOM elements (tables, list items, etc.)
                 var selectors = [
                     'tr', '.record-item', '.van-list__item', '.list-item', 
-                    'div[class*="period"]', 'div[class*="history"]', 'div[class*="game"]', '.van-row'
+                    'div[class*="period"]', 'div[class*="history"]', 'div[class*="game"]', '.van-row', 'li'
                 ];
 
                 selectors.forEach(function(sel) {
                     var elements = document.querySelectorAll(sel);
                     elements.forEach(function(el) {
                         var text = el.innerText || '';
-                        var match = text.match(/(\d{10,20})[\s\S]*?(\d)[\s\S]*?(BIG|SMALL|Big|Small|green|red|violet)?/i);
-                        if (match) {
-                            records.push({
-                                periodId: match[1],
-                                number: parseInt(match[2]),
-                                bigSmall: match[3] ? match[3].toUpperCase() : (parseInt(match[2]) >= 5 ? 'BIG' : 'SMALL')
-                            });
+                        var m = text.match(/\*?(\d{5,20})[\s\S]*?\b([0-9])\b[\s\S]*?(BIG|SMALL|Big|Small|green|red|violet)?/i);
+                        if (m) {
+                            var pId = m[1];
+                            var num = parseInt(m[2]);
+                            var bs = m[3] ? m[3].toUpperCase() : (num >= 5 ? 'BIG' : 'SMALL');
+                            if (!seenPeriods[pId] && num >= 0 && num <= 9) {
+                                seenPeriods[pId] = true;
+                                records.push({
+                                    periodId: pId,
+                                    number: num,
+                                    bigSmall: bs
+                                });
+                            }
                         }
                     });
                 });
@@ -530,12 +566,15 @@ private fun parseYaarwinJson(jsonStr: String, gameMode: String): List<PeriodReco
 
 private fun parseObjectToRecord(obj: JSONObject, gameMode: String): PeriodRecord? {
     try {
-        val pId = obj.optString("periodId", obj.optString("period", obj.optString("issueNumber", obj.optString("issue", ""))))
+        val rawPId = obj.optString("periodId", obj.optString("period", obj.optString("issueNumber", obj.optString("issue", ""))))
+            .replace("*", "").trim()
         var num = obj.optInt("number", -1)
         if (num == -1) num = obj.optInt("winningNumber", -1)
         if (num == -1) num = obj.optInt("result", -1)
 
-        if (pId.length >= 8 && num in 0..9) {
+        val cleanDigits = rawPId.filter { it.isDigit() }
+        if (cleanDigits.length >= 4 && num in 0..9) {
+            val pId = PeriodUtils.normalizePeriodId(rawPId, gameMode)
             val bs = if (num >= 5) "BIG" else "SMALL"
             val col = when (num) {
                 0, 5 -> "VIOLET"
@@ -548,7 +587,8 @@ private fun parseObjectToRecord(obj: JSONObject, gameMode: String): PeriodRecord
                 number = num,
                 bigSmall = bs,
                 color = col,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                isRealVerified = true
             )
         }
     } catch (e: Exception) {

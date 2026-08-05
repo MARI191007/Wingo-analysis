@@ -53,6 +53,10 @@ fun MainPredictorScreen(
             },
             onSubmitRealResult = { periodId, winningDigit ->
                 viewModel.injectManualPeriod(periodId, winningDigit)
+            },
+            onBatchImportText = { text ->
+                viewModel.batchImportWebsiteHistory(text)
+                viewModel.setSyncModalOpen(false)
             }
         )
     }
@@ -117,7 +121,10 @@ fun MainPredictorScreen(
                                 PeriodHistoryTable(
                                     periods = uiState.periodHistory,
                                     predictions = uiState.verifiedPredictions,
-                                    onSyncClick = { viewModel.sync500OnlinePeriods() }
+                                    onSyncClick = { viewModel.sync500OnlinePeriods() },
+                                    onUpdatePeriodResult = { periodId, digit ->
+                                        viewModel.injectManualPeriod(periodId, digit)
+                                    }
                                 )
 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -152,7 +159,10 @@ fun MainPredictorScreen(
                                 PeriodHistoryTable(
                                     periods = uiState.periodHistory,
                                     predictions = uiState.verifiedPredictions,
-                                    onSyncClick = { viewModel.sync500OnlinePeriods() }
+                                    onSyncClick = { viewModel.sync500OnlinePeriods() },
+                                    onUpdatePeriodResult = { periodId, digit ->
+                                        viewModel.injectManualPeriod(periodId, digit)
+                                    }
                                 )
 
                                 Spacer(modifier = Modifier.height(24.dp))
@@ -164,7 +174,10 @@ fun MainPredictorScreen(
                                 PeriodHistoryTable(
                                     periods = uiState.periodHistory,
                                     predictions = uiState.verifiedPredictions,
-                                    onSyncClick = { viewModel.sync500OnlinePeriods() }
+                                    onSyncClick = { viewModel.sync500OnlinePeriods() },
+                                    onUpdatePeriodResult = { periodId, digit ->
+                                        viewModel.injectManualPeriod(periodId, digit)
+                                    }
                                 )
                                 Spacer(modifier = Modifier.height(24.dp))
                             }

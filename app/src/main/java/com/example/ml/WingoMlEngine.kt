@@ -52,10 +52,9 @@ class WingoMlEngine {
         history: List<PeriodRecord>,
         algorithm: AlgorithmType = AlgorithmType.MARKOV_CHAIN,
         targetPeriodId: String? = null
-    ): MlPredictionOutput {
-        // Ensure historical periods exist
-        val safeHistory = if (history.isEmpty()) generateInitialSyntheticHistory(500) else history
-        val periodsToAnalyze = safeHistory.take(500)
+    ): MlPredictionOutput? {
+        if (history.isEmpty()) return null
+        val periodsToAnalyze = history.take(500)
 
         val digitProbabilities = DoubleArray(10) { 0.10 } // Base uniform 10%
 
@@ -474,33 +473,6 @@ class WingoMlEngine {
     }
 
     fun generateInitialSyntheticHistory(count: Int = 500, gameMode: String = "1Min"): List<PeriodRecord> {
-        val list = mutableListOf<PeriodRecord>()
-        val basePeriod = 2026080310001000L
-        for (i in 0 until count) {
-            val periodId = (basePeriod + (count - i)).toString()
-            val key = "OFFICIAL_WINGO_SERVER_SEED_${gameMode}_$periodId"
-            var hash = 1125899906842597L
-            for (j in key.indices) {
-                hash = (31 * hash + key[j].code.toLong()) and 0x7FFFFFFFFFFFFFFFL
-            }
-            val num = (abs(hash) % 10).toInt()
-            val bs = if (num >= 5) "BIG" else "SMALL"
-            val color = when (num) {
-                0, 5 -> "VIOLET"
-                1, 3, 7, 9 -> "GREEN"
-                else -> "RED"
-            }
-            list.add(
-                PeriodRecord(
-                    periodId = periodId,
-                    gameMode = gameMode,
-                    number = num,
-                    bigSmall = bs,
-                    color = color,
-                    timestamp = System.currentTimeMillis() - (i * 60000L)
-                )
-            )
-        }
-        return list
+        return emptyList()
     }
 }

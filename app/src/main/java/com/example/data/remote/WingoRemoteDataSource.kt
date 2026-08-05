@@ -1,6 +1,7 @@
 package com.example.data.remote
 
 import com.example.data.model.PeriodRecord
+import com.example.util.PeriodUtils
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
@@ -40,39 +41,88 @@ class WingoRemoteDataSource {
     ): List<PeriodRecord> {
         val mappedList = mutableListOf<PeriodRecord>()
 
-        // 1. Primary: Fetch & Parse from https://wingoanalyst.com/ or WingoAnalyst API
+        // 1. Primary: Fetch directly from Yaarwin Server API endpoints (api.yaarwin.com / 20yaarwin.com)
         try {
-            val wingoAnalystUrl = when (gameMode) {
-                "1Min" -> "https://wingoanalyst.com/api/wingo_1m"
-                "3Min" -> "https://wingoanalyst.com/api/wingo_3m"
-                "5Min" -> "https://wingoanalyst.com/api/wingo_5m"
-                "10Min" -> "https://wingoanalyst.com/api/wingo_10m"
-                else -> "https://wingoanalyst.com/api/wingo_1m"
+            val typeId = when (gameMode) {
+                "3Min" -> 2
+                "5Min" -> 3
+                "10Min" -> 4
+                else -> 1 // 1Min or 30s
             }
 
-            val request = okhttp3.Request.Builder()
-                .url(wingoAnalystUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .header("Accept", "application/json, text/plain, */*")
-                .header("Referer", "https://wingoanalyst.com/#/wingo_1m")
-                .build()
+            val yaarwinEndpoints = listOf(
+                "https://api.yaarwin.com/api/webapi/GetNoHeaderList?typeId=$typeId&pageNo=1&pageSize=100",
+                "https://www.20yaarwin.com/api/webapi/GetNoHeaderList?typeId=$typeId&pageNo=1&pageSize=100",
+                "https://api.yaarwin.com/api/wingo/history?mode=$gameMode&limit=500",
+                "https://yaarwin.club/api/wingo/history?mode=$gameMode&limit=500"
+            )
 
-            val callResponse = okHttpClient.newCall(request).execute()
-            if (callResponse.isSuccessful) {
-                val rawBody = callResponse.body?.string()
-                if (!rawBody.isNullOrBlank()) {
-                    parseWingoAnalystRecords(rawBody, gameMode, mappedList)
+            for (endpoint in yaarwinEndpoints) {
+                if (mappedList.size >= 20) break
+                try {
+                    val request = okhttp3.Request.Builder()
+                        .url(endpoint)
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .header("Accept", "application/json, text/plain, */*")
+                        .header("Referer", "https://www.20yaarwin.com/")
+                        .build()
+
+                    val callResponse = okHttpClient.newCall(request).execute()
+                    if (callResponse.isSuccessful) {
+                        val rawBody = callResponse.body?.string()
+                        if (!rawBody.isNullOrBlank()) {
+                            parseWingoAnalystRecords(rawBody, gameMode, mappedList)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Try next endpoint
                 }
             }
         } catch (e: Exception) {
-            // Ignore network exception, fallback to secondary endpoints/scrapers below
+            // Yaarwin network exception
         }
 
-        // 2. Secondary: Fetch from https://wingoanalyst.com/ main HTML page if API was unavailable
+        // 2. Secondary: Fetch & Parse from https://wingoanalyst.com/ API endpoints if Yaarwin API is blocked
         if (mappedList.isEmpty()) {
             try {
+                val wingoAnalystUrl = when (gameMode) {
+                    "1Min" -> "https://wingoanalyst.com/api/wingo_1m"
+                    "3Min" -> "https://wingoanalyst.com/api/wingo_3m"
+                    "5Min" -> "https://wingoanalyst.com/api/wingo_5m"
+                    "10Min" -> "https://wingoanalyst.com/api/wingo_10m"
+                    else -> "https://wingoanalyst.com/api/wingo_1m"
+                }
+
+                val request = okhttp3.Request.Builder()
+                    .url(wingoAnalystUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .header("Accept", "application/json, text/plain, */*")
+                    .header("Referer", "https://wingoanalyst.com/#/wingo_1m")
+                    .build()
+
+                val callResponse = okHttpClient.newCall(request).execute()
+                if (callResponse.isSuccessful) {
+                    val rawBody = callResponse.body?.string()
+                    if (!rawBody.isNullOrBlank()) {
+                        parseWingoAnalystRecords(rawBody, gameMode, mappedList)
+                    }
+                }
+            } catch (e: Exception) {
+                // Network failure or unavailable API
+            }
+        }
+
+        // 3. Tertiary: Fetch from https://wingoanalyst.com/ main HTML page if API returned no data
+        if (mappedList.isEmpty()) {
+            try {
+                val modePage = when (gameMode) {
+                    "3Min" -> "wingo_3m"
+                    "5Min" -> "wingo_5m"
+                    "10Min" -> "wingo_10m"
+                    else -> "wingo_1m"
+                }
                 val mainPageRequest = okhttp3.Request.Builder()
-                    .url("https://wingoanalyst.com/#/wingo_1m")
+                    .url("https://wingoanalyst.com/#/$modePage")
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                     .build()
                 val pageResponse = okHttpClient.newCall(mainPageRequest).execute()
@@ -83,82 +133,11 @@ class WingoRemoteDataSource {
                     }
                 }
             } catch (e: Exception) {
-                // Ignore exception
+                // Network failure
             }
         }
 
-        // 3. Tertiary: Fallback to Yaarwin / standard API endpoint
-        if (mappedList.isEmpty()) {
-            try {
-                val response = apiService.getYaarwinHistory(gameMode, count)
-                if (response.isSuccessful) {
-                    val body = response.body()
-                    val records = body?.data?.list ?: body?.rawList
-                    if (!records.isNullOrEmpty()) {
-                        records.forEach { item ->
-                            val pId = item.periodId ?: item.period ?: item.issueNumber
-                            val num = item.number ?: item.winningNumber
-                            if (pId != null && num != null) {
-                                val bs = item.bigSmall ?: if (num >= 5) "BIG" else "SMALL"
-                                val col = item.color ?: getDigitColor(num)
-                                mappedList.add(
-                                    PeriodRecord(
-                                        periodId = pId,
-                                        gameMode = gameMode,
-                                        number = num,
-                                        bigSmall = bs,
-                                        color = col,
-                                        timestamp = item.timestamp ?: System.currentTimeMillis()
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-
-        // 2. Standardize closed period baseline using UTC epoch
-        val now = System.currentTimeMillis()
-        val intervalSeconds = when (gameMode) {
-            "1Min" -> 60
-            "3Min" -> 180
-            "5Min" -> 300
-            "10Min" -> 600
-            else -> 60
-        }
-
-        // Active period currently running
-        val activePeriodLong = parsePeriodToLong(customBasePeriodId, gameMode, now, intervalSeconds, customSetTimeMs)
-        // Most recent CLOSED period is (activePeriodLong - 1)
-        val closedBasePeriodLong = activePeriodLong - 1L
-
-        val existingIds = mappedList.map { it.periodId }.toSet()
-
-        // Complement with deterministic standard period sequence up to 500 records
-        for (i in 0 until count) {
-            val periodIdStr = (closedBasePeriodLong - i).toString()
-            if (!existingIds.contains(periodIdStr)) {
-                val digit = getOnlineServerDigitForPeriod(periodIdStr, gameMode)
-                val bs = if (digit >= 5) "BIG" else "SMALL"
-                val col = getDigitColor(digit)
-                val ts = now - ((i + 1) * intervalSeconds * 1000L)
-
-                mappedList.add(
-                    PeriodRecord(
-                        periodId = periodIdStr,
-                        gameMode = gameMode,
-                        number = digit,
-                        bigSmall = bs,
-                        color = col,
-                        timestamp = ts
-                    )
-                )
-            }
-        }
-
+        // Return authentic records from the Yaarwin / Wingo servers.
         return mappedList.sortedByDescending { it.periodId }.take(count)
     }
 
@@ -202,36 +181,15 @@ class WingoRemoteDataSource {
         val parsedSet = mutableSetOf<String>()
 
         // Regex 1: Match JSON structure {"period":"202608031000123","number":7,...} or similar
-        val jsonPattern = Regex("""["']?(?:period|issueNumber|periodId)["']?\s*:\s*["']?(\d{10,20})["']?[\s\S]*?["']?(?:number|winningNumber|result|num)["']?\s*:\s*["']?(\d)["']?""")
+        val jsonPattern = Regex("""["']?(?:period|issueNumber|periodId)["']?\s*:\s*["']?\*?(\d{4,20})["']?[\s\S]*?["']?(?:number|winningNumber|result|num)["']?\s*:\s*["']?(\d)["']?""")
         for (match in jsonPattern.findAll(content)) {
-            val periodId = match.groupValues[1]
+            val rawPeriodId = match.groupValues[1]
             val digit = match.groupValues[2].toIntOrNull()
-            if (periodId.length >= 10 && digit != null && !parsedSet.contains(periodId)) {
-                parsedSet.add(periodId)
-                val bs = if (digit >= 5) "BIG" else "SMALL"
-                val col = getDigitColor(digit)
-                outputList.add(
-                    PeriodRecord(
-                        periodId = periodId,
-                        gameMode = gameMode,
-                        number = digit,
-                        bigSmall = bs,
-                        color = col,
-                        timestamp = System.currentTimeMillis()
-                    )
-                )
-            }
-        }
-
-        // Regex 2: Match raw numbers/period sequences in HTML or text if JSON regex didn't find all 99
-        if (outputList.size < 10) {
-            val textPattern = Regex("""(\d{12,18})\D+([0-9])\D+(BIG|SMALL|Big|Small|big|small)?""")
-            for (match in textPattern.findAll(content)) {
-                val periodId = match.groupValues[1]
-                val digit = match.groupValues[2].toIntOrNull()
-                if (periodId.length >= 12 && digit != null && !parsedSet.contains(periodId)) {
+            if (rawPeriodId.length >= 4 && digit != null && digit in 0..9) {
+                val periodId = PeriodUtils.normalizePeriodId(rawPeriodId, gameMode)
+                if (!parsedSet.contains(periodId)) {
                     parsedSet.add(periodId)
-                    val bs = match.groupValues.getOrNull(3)?.uppercase() ?: if (digit >= 5) "BIG" else "SMALL"
+                    val bs = if (digit >= 5) "BIG" else "SMALL"
                     val col = getDigitColor(digit)
                     outputList.add(
                         PeriodRecord(
@@ -240,9 +198,38 @@ class WingoRemoteDataSource {
                             number = digit,
                             bigSmall = bs,
                             color = col,
-                            timestamp = System.currentTimeMillis()
+                            timestamp = System.currentTimeMillis(),
+                            isRealVerified = true
                         )
                     )
+                }
+            }
+        }
+
+        // Regex 2: Match raw numbers/period sequences in HTML or text if JSON regex didn't find all 99
+        if (outputList.size < 10) {
+            val textPattern = Regex("""\*?(\d{4,20})\D+([0-9])\D+(BIG|SMALL|Big|Small|big|small)?""")
+            for (match in textPattern.findAll(content)) {
+                val rawPeriodId = match.groupValues[1]
+                val digit = match.groupValues[2].toIntOrNull()
+                if (rawPeriodId.length >= 4 && digit != null && digit in 0..9) {
+                    val periodId = PeriodUtils.normalizePeriodId(rawPeriodId, gameMode)
+                    if (!parsedSet.contains(periodId)) {
+                        parsedSet.add(periodId)
+                        val bs = match.groupValues.getOrNull(3)?.uppercase() ?: if (digit >= 5) "BIG" else "SMALL"
+                        val col = getDigitColor(digit)
+                        outputList.add(
+                            PeriodRecord(
+                                periodId = periodId,
+                                gameMode = gameMode,
+                                number = digit,
+                                bigSmall = bs,
+                                color = col,
+                                timestamp = System.currentTimeMillis(),
+                                isRealVerified = true
+                            )
+                        )
+                    }
                 }
             }
         }

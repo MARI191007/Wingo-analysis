@@ -9,7 +9,7 @@ import com.example.data.model.PredictionResult
 
 @Database(
     entities = [PeriodRecord::class, PredictionResult::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class WingoDatabase : RoomDatabase() {

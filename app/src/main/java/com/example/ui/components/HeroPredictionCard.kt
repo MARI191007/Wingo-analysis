@@ -334,9 +334,40 @@ fun HeroPredictionCard(
                             fontWeight = FontWeight.Medium
                         )
                     }
+                } else if (prediction == null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Sync",
+                            tint = NeonGold,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "LIVE DATA COULD NOT BE FETCHED",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Live history from wingoanalyst.com could not be accessed. Analysis is stopped. Please click SYNC or check connection.",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.85f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
                 } else {
-                    val bs = prediction?.predictedBigSmall ?: "BIG"
-                    val targetPeriod = prediction?.targetPeriodId ?: serverInfo?.nextPeriodId ?: ""
+                    val bs = prediction.predictedBigSmall
+                    val targetPeriod = prediction.targetPeriodId
 
                     // Target Period Banner Badge
                     Surface(

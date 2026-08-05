@@ -17,14 +17,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +40,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.data.model.PeriodRecord
 import com.example.data.model.PredictionResult
 import com.example.ui.theme.ImmersiveBackground
@@ -40,6 +49,7 @@ import com.example.ui.theme.ImmersiveIndigoLight
 import com.example.ui.theme.ImmersiveIndigoPrimary
 import com.example.ui.theme.ImmersiveSurface
 import com.example.ui.theme.LiveGreen
+import com.example.ui.theme.NeonGold
 import com.example.ui.theme.NeonOrange
 import com.example.ui.theme.NeonRed
 import com.example.ui.theme.NeonViolet
@@ -52,11 +62,15 @@ fun PeriodHistoryTable(
     periods: List<PeriodRecord>,
     predictions: List<PredictionResult> = emptyList(),
     onSyncClick: (() -> Unit)? = null,
+    onUpdatePeriodResult: ((periodId: String, digit: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val predictionMap = remember(predictions) {
         predictions.associateBy { it.targetPeriodId }
     }
+
+    var editingPeriodId by remember { mutableStateOf<String?>(null) }
+    var selectedDigitForEdit by remember { mutableStateOf(5) }
 
     Card(
         modifier = modifier
@@ -99,7 +113,7 @@ fun PeriodHistoryTable(
                             modifier = Modifier.padding(end = 6.dp)
                         ) {
                             Text(
-                                text = "↻ SYNC 500",
+                                text = "↻ SYNC / FIX DATA",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = LiveGreen,
@@ -172,13 +186,41 @@ fun PeriodHistoryTable(
             }
 
             if (periods.isEmpty()) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(vertical = 24.dp, horizontal = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text("Synchronizing with Wingo server...", color = TextMuted, fontSize = 12.sp)
+                    Text(
+                        text = "Live history data is syncing from Yaarwin / WinGo Servers...",
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (onSyncClick != null) {
+                        Button(
+                            onClick = onSyncClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = ImmersiveIndigoPrimary),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "FETCH & SYNC YAARWIN / WINGO DATA",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
@@ -190,7 +232,111 @@ fun PeriodHistoryTable(
                 ) {
                     items(periods, key = { it.periodId }) { item ->
                         val prediction = predictionMap[item.periodId]
-                        PeriodRowItem(period = item, prediction = prediction)
+                        PeriodRowItem(
+                            period = item,
+                            prediction = prediction,
+                            onEditClick = {
+                                editingPeriodId = item.periodId
+                                selectedDigitForEdit = item.number
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Quick Edit Period Result Dialog
+    if (editingPeriodId != null) {
+        Dialog(onDismissRequest = { editingPeriodId = null }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = ImmersiveSurface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "SET EXACT WEBSITE RESULT",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Period #${editingPeriodId?.takeLast(8)}",
+                        fontSize = 11.sp,
+                        color = NeonGold,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Select actual winning digit on your website (0-9):",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        (0..9).forEach { digit ->
+                            val isSelected = selectedDigitForEdit == digit
+                            Surface(
+                                modifier = Modifier.size(28.dp),
+                                shape = CircleShape,
+                                color = if (isSelected) LiveGreen else ImmersiveBackground,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) LiveGreen else ImmersiveCardBorder
+                                ),
+                                onClick = { selectedDigitForEdit = digit }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = digit.toString(),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) ImmersiveBackground else TextPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { editingPeriodId = null },
+                            modifier = Modifier.weight(1f).height(38.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ImmersiveCardBorder)
+                        ) {
+                            Text("CANCEL", fontSize = 10.sp, color = TextPrimary)
+                        }
+
+                        Button(
+                            onClick = {
+                                editingPeriodId?.let { pId ->
+                                    onUpdatePeriodResult?.invoke(pId, selectedDigitForEdit)
+                                }
+                                editingPeriodId = null
+                            },
+                            modifier = Modifier.weight(1f).height(38.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = LiveGreen)
+                        ) {
+                            Text("SAVE RESULT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ImmersiveBackground)
+                        }
                     }
                 }
             }
@@ -201,7 +347,8 @@ fun PeriodHistoryTable(
 @Composable
 fun PeriodRowItem(
     period: PeriodRecord,
-    prediction: PredictionResult? = null
+    prediction: PredictionResult? = null,
+    onEditClick: (() -> Unit)? = null
 ) {
     val isBig = period.bigSmall == "BIG"
     val bsBg = if (isBig) ImmersiveIndigoPrimary.copy(alpha = 0.2f) else NeonOrange.copy(alpha = 0.15f)
@@ -223,44 +370,96 @@ fun PeriodRowItem(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            // Header Row: Period ID & AI Match Badge
+            // Header Row: Period ID, Verified Badge & AI Match
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Period #${period.periodId.takeLast(8)}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-
-                if (prediction != null) {
-                    val isWin = prediction.isWin == true
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isWin) LiveGreen.copy(alpha = 0.15f) else NeonRed.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isWin) LiveGreen.copy(alpha = 0.3f) else NeonRed.copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Text(
-                            text = if (isWin) "✓ AI MATCH WIN" else "✗ AI LOSS",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isWin) LiveGreen else NeonRed,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
-                    }
-                } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "ORIGINAL RESULT",
-                        fontSize = 9.sp,
-                        color = TextMuted,
-                        fontWeight = FontWeight.Bold
+                        text = "Period #${period.periodId.takeLast(8)}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    if (period.isRealVerified) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = LiveGreen.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, LiveGreen.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = LiveGreen,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "WEBSITE DATA",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = LiveGreen
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = NeonOrange.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "ESTIMATED",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonOrange,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (prediction != null) {
+                        val isWin = prediction.isWin == true
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isWin) LiveGreen.copy(alpha = 0.15f) else NeonRed.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isWin) LiveGreen.copy(alpha = 0.3f) else NeonRed.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Text(
+                                text = if (isWin) "✓ AI WIN" else "✗ AI LOSS",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isWin) LiveGreen else NeonRed,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    if (onEditClick != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onEditClick,
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Result",
+                                tint = NeonGold,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
                 }
             }
 
