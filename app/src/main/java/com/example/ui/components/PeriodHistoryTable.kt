@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.PeriodRecord
+import com.example.data.model.PredictionResult
 import com.example.ui.theme.ImmersiveBackground
 import com.example.ui.theme.ImmersiveCardBorder
 import com.example.ui.theme.ImmersiveIndigoLight
@@ -48,8 +50,14 @@ import com.example.ui.theme.TextSecondary
 @Composable
 fun PeriodHistoryTable(
     periods: List<PeriodRecord>,
+    predictions: List<PredictionResult> = emptyList(),
+    onSyncClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val predictionMap = remember(predictions) {
+        predictions.associateBy { it.targetPeriodId }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -73,7 +81,7 @@ fun PeriodHistoryTable(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "LAST 50 PERIOD TREND",
+                        text = "PERIOD HISTORY (500 RESULTS)",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
@@ -81,17 +89,37 @@ fun PeriodHistoryTable(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = ImmersiveBackground
-                ) {
-                    Text(
-                        text = "${periods.size} Records",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onSyncClick != null) {
+                        Surface(
+                            onClick = onSyncClick,
+                            shape = RoundedCornerShape(10.dp),
+                            color = LiveGreen.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, LiveGreen.copy(alpha = 0.4f)),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Text(
+                                text = "↻ SYNC 500",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = LiveGreen,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = ImmersiveBackground
+                    ) {
+                        Text(
+                            text = "${periods.size} / 500",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -143,22 +171,6 @@ fun PeriodHistoryTable(
                 Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // Table Column Labels
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Period ID", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1.4f))
-                Text("Number", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(0.8f))
-                Text("Size", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1.0f))
-                Text("Color", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(0.8f))
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
             if (periods.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -172,12 +184,13 @@ fun PeriodHistoryTable(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(280.dp)
+                        .height(420.dp)
                         .testTag("period_history_list"),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(periods, key = { it.periodId }) { item ->
-                        PeriodRowItem(period = item)
+                        val prediction = predictionMap[item.periodId]
+                        PeriodRowItem(period = item, prediction = prediction)
                     }
                 }
             }
@@ -186,7 +199,10 @@ fun PeriodHistoryTable(
 }
 
 @Composable
-fun PeriodRowItem(period: PeriodRecord) {
+fun PeriodRowItem(
+    period: PeriodRecord,
+    prediction: PredictionResult? = null
+) {
     val isBig = period.bigSmall == "BIG"
     val bsBg = if (isBig) ImmersiveIndigoPrimary.copy(alpha = 0.2f) else NeonOrange.copy(alpha = 0.15f)
     val bsTextColor = if (isBig) ImmersiveIndigoLight else NeonOrange
@@ -199,76 +215,120 @@ fun PeriodRowItem(period: PeriodRecord) {
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         color = ImmersiveBackground.copy(alpha = 0.6f)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            // Period ID
-            Text(
-                text = period.periodId.takeLast(8),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.weight(1.4f)
-            )
+            // Header Row: Period ID & AI Match Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Period #${period.periodId.takeLast(8)}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
 
-            // Winning Number Circle
-            Box(modifier = Modifier.weight(0.8f)) {
-                Surface(
-                    modifier = Modifier.size(26.dp),
-                    shape = CircleShape,
-                    color = colorHex.copy(alpha = 0.2f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, colorHex)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
+                if (prediction != null) {
+                    val isWin = prediction.isWin == true
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isWin) LiveGreen.copy(alpha = 0.15f) else NeonRed.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isWin) LiveGreen.copy(alpha = 0.3f) else NeonRed.copy(alpha = 0.3f)
+                        )
+                    ) {
                         Text(
-                            text = period.number.toString(),
-                            fontSize = 12.sp,
+                            text = if (isWin) "✓ AI MATCH WIN" else "✗ AI LOSS",
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = colorHex
+                            color = if (isWin) LiveGreen else NeonRed,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "ORIGINAL RESULT",
+                        fontSize = 9.sp,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Body Row: Original Result vs AI Prediction Comparison
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Actual Server Result
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Actual: ", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                    Surface(
+                        modifier = Modifier.size(24.dp),
+                        shape = CircleShape,
+                        color = colorHex.copy(alpha = 0.2f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colorHex)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = period.number.toString(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colorHex
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = bsBg
+                    ) {
+                        Text(
+                            text = period.bigSmall,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = bsTextColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
-            }
 
-            // Big / Small Tag
-            Box(modifier = Modifier.weight(1.0f)) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = bsBg
-                ) {
-                    Text(
-                        text = period.bigSmall,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = bsTextColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            // Color Dot
-            Box(modifier = Modifier.weight(0.8f)) {
+                // AI Prediction Result
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(colorHex)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = period.color.take(1),
-                        fontSize = 10.sp,
-                        color = TextSecondary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text("Predicted: ", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                    if (prediction != null) {
+                        val predIsBig = prediction.predictedBigSmall == "BIG"
+                        val predBg = if (predIsBig) ImmersiveIndigoPrimary.copy(alpha = 0.2f) else NeonOrange.copy(alpha = 0.15f)
+                        val predColor = if (predIsBig) ImmersiveIndigoLight else NeonOrange
+
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = predBg,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, predColor.copy(alpha = 0.3f))
+                        ) {
+                            Text(
+                                text = "${prediction.predictedBigSmall} [${prediction.primaryNumber}, ${prediction.secondaryNumber}]",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = predColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        Text("No Log", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Normal)
+                    }
                 }
             }
         }

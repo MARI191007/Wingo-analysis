@@ -101,11 +101,11 @@ fun HeaderBar(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "LIVE SERVER",
-                        fontSize = 10.sp,
+                        text = "WINGOANALYST.COM LIVE",
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = LiveGreen,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.5.sp
                     )
                 }
             }

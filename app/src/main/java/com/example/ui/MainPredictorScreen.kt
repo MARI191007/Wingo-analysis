@@ -31,6 +31,9 @@ import com.example.ui.components.HeroPredictionCard
 import com.example.ui.components.NavigationTab
 import com.example.ui.components.PeriodHistoryTable
 import com.example.ui.components.PredictionStatsCard
+import com.example.ui.components.PsychologicalPatternCard
+import com.example.ui.components.SyncRealPeriodDialog
+import com.example.ui.components.YaarwinWebCard
 import com.example.ui.theme.ImmersiveBackground
 
 @Composable
@@ -39,6 +42,20 @@ fun MainPredictorScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var activeTab by remember { mutableStateOf(NavigationTab.PREDICT) }
+
+    if (uiState.isSyncModalOpen) {
+        SyncRealPeriodDialog(
+            currentPeriodId = uiState.serverInfo?.currentPeriodId ?: "",
+            onDismiss = { viewModel.setSyncModalOpen(false) },
+            onSyncBasePeriod = { periodId ->
+                viewModel.updateCustomBasePeriod(periodId)
+                viewModel.setSyncModalOpen(false)
+            },
+            onSubmitRealResult = { periodId, winningDigit ->
+                viewModel.injectManualPeriod(periodId, winningDigit)
+            }
+        )
+    }
 
     Scaffold(
         containerColor = ImmersiveBackground,
@@ -87,16 +104,56 @@ fun MainPredictorScreen(
                                     isAnalyzing = uiState.isAnalyzing,
                                     selectedAlgorithm = uiState.selectedAlgorithm,
                                     onAlgorithmChange = { viewModel.selectAlgorithm(it) },
-                                    onPredictClick = { viewModel.generateMlPrediction() }
+                                    onPredictClick = { viewModel.generateMlPrediction() },
+                                    onOpenSyncModal = { viewModel.setSyncModalOpen(true) }
                                 )
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
-                                PeriodHistoryTable(periods = uiState.periodHistory)
+                                PsychologicalPatternCard(mlOutput = uiState.mlOutputDetails)
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                PeriodHistoryTable(
+                                    periods = uiState.periodHistory,
+                                    predictions = uiState.verifiedPredictions,
+                                    onSyncClick = { viewModel.sync500OnlinePeriods() }
+                                )
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
                                 AnalyticsHeatmapCard(mlOutput = uiState.mlOutputDetails)
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // Embedded Yaarwin Live Portal directly at the bottom
+                                YaarwinWebCard(
+                                    currentGameMode = uiState.selectedGameMode,
+                                    onHistoryExtracted = { records ->
+                                        viewModel.ingestYaarwinLiveHistory(records)
+                                    }
+                                )
+
+                                Spacer(modifier = Modifier.height(24.dp))
+                            }
+                        }
+
+                        NavigationTab.YAARWIN -> {
+                            Column {
+                                YaarwinWebCard(
+                                    currentGameMode = uiState.selectedGameMode,
+                                    onHistoryExtracted = { records ->
+                                        viewModel.ingestYaarwinLiveHistory(records)
+                                    }
+                                )
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                PeriodHistoryTable(
+                                    periods = uiState.periodHistory,
+                                    predictions = uiState.verifiedPredictions,
+                                    onSyncClick = { viewModel.sync500OnlinePeriods() }
+                                )
 
                                 Spacer(modifier = Modifier.height(24.dp))
                             }
@@ -104,13 +161,21 @@ fun MainPredictorScreen(
 
                         NavigationTab.HISTORY -> {
                             Column {
-                                PeriodHistoryTable(periods = uiState.periodHistory)
+                                PeriodHistoryTable(
+                                    periods = uiState.periodHistory,
+                                    predictions = uiState.verifiedPredictions,
+                                    onSyncClick = { viewModel.sync500OnlinePeriods() }
+                                )
                                 Spacer(modifier = Modifier.height(24.dp))
                             }
                         }
 
                         NavigationTab.ANALYTICS -> {
                             Column {
+                                PsychologicalPatternCard(mlOutput = uiState.mlOutputDetails)
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
                                 AnalyticsHeatmapCard(mlOutput = uiState.mlOutputDetails)
 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -137,7 +202,8 @@ fun MainPredictorScreen(
                                             viewModel.injectManualPeriod(info.currentPeriodId, digit)
                                         }
                                     },
-                                    onResetData = { viewModel.resetData() }
+                                    onResetData = { viewModel.resetData() },
+                                    onOpenSyncModal = { viewModel.setSyncModalOpen(true) }
                                 )
 
                                 Spacer(modifier = Modifier.height(16.dp))

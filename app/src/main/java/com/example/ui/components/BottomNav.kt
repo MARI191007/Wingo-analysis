@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import com.example.ui.theme.TextPrimary
 
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     PREDICT("PREDICT", Icons.Default.Dashboard),
+    YAARWIN("YAARWIN", Icons.Default.Language),
     HISTORY("HISTORY", Icons.Default.History),
     ANALYTICS("STATS", Icons.Default.Analytics),
     ENGINE("ENGINE", Icons.Default.Tune)

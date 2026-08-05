@@ -8,6 +8,10 @@ import com.example.ui.MainPredictorScreen
 import com.example.ui.theme.WingoTheme
 
 class MainActivity : ComponentActivity() {
+  override fun getAttributionTag(): String? {
+    return "default"
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()

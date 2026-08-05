@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,6 +52,7 @@ fun EngineSettingsCard(
     serverLatencyMs: Int,
     onInjectDigit: (Int) -> Unit,
     onResetData: () -> Unit,
+    onOpenSyncModal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -166,7 +168,29 @@ fun EngineSettingsCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sync Real Game Period Button
+            Button(
+                onClick = onOpenSyncModal,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .testTag("settings_sync_period_button"),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveIndigoPrimary)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = "Sync",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("SYNC REAL GAME PERIOD & RESULTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Reset Data Button
             OutlinedButton(

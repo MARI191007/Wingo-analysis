@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PeriodDao {
     @Query("SELECT * FROM period_records WHERE gameMode = :mode ORDER BY periodId DESC LIMIT :limit")
-    fun getRecentPeriods(mode: String, limit: Int = 50): Flow<List<PeriodRecord>>
+    fun getRecentPeriods(mode: String, limit: Int = 500): Flow<List<PeriodRecord>>
 
     @Query("SELECT * FROM period_records WHERE gameMode = :mode ORDER BY periodId DESC LIMIT :limit")
-    suspend fun getRecentPeriodsList(mode: String, limit: Int = 50): List<PeriodRecord>
+    suspend fun getRecentPeriodsList(mode: String, limit: Int = 500): List<PeriodRecord>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPeriod(period: PeriodRecord)

@@ -34,7 +34,10 @@ data class WingoUiState(
     val totalVerifiedCount: Int = 0,
     val winRatePercentage: Float = 88.5f,
     val currentStreak: String = "4 WIN",
-    val mlOutputDetails: MlPredictionOutput? = null
+    val mlOutputDetails: MlPredictionOutput? = null,
+    val customBasePeriodId: String? = null,
+    val customSetTimeMs: Long = 0L,
+    val isSyncModalOpen: Boolean = false
 )
 
 class WingoViewModel(application: Application) : AndroidViewModel(application) {
@@ -59,6 +62,46 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setSyncModalOpen(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isSyncModalOpen = open)
+    }
+
+    fun ingestYaarwinLiveHistory(records: List<PeriodRecord>) {
+        if (records.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            repository.ingestYaarwinLiveHistory(records)
+            generateMlPrediction()
+            _uiState.value = _uiState.value.copy(isAnalyzing = false)
+        }
+    }
+
+    fun sync500OnlinePeriods() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            val mode = _uiState.value.selectedGameMode
+            val baseId = _uiState.value.customBasePeriodId
+            val setTime = _uiState.value.customSetTimeMs
+            repository.syncOnlinePeriodHistory(mode, baseId, setTime)
+            generateMlPrediction()
+            _uiState.value = _uiState.value.copy(isAnalyzing = false)
+        }
+    }
+
+    fun updateCustomBasePeriod(periodId: String) {
+        if (periodId.isBlank()) return
+        val now = System.currentTimeMillis()
+        _uiState.value = _uiState.value.copy(
+            customBasePeriodId = periodId.trim(),
+            customSetTimeMs = now
+        )
+        viewModelScope.launch {
+            repository.syncOnlinePeriodHistory(_uiState.value.selectedGameMode, periodId.trim(), now)
+            startServerClock()
+            generateMlPrediction()
+        }
+    }
+
     fun selectGameMode(mode: String) {
         if (_uiState.value.selectedGameMode == mode) return
         _uiState.value = _uiState.value.copy(selectedGameMode = mode)
@@ -80,10 +123,13 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun observeHistory(mode: String) {
         historyCollectJob?.cancel()
-        historyCollectJob = viewModelScope.launch {
+        historyCollectJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             repository.getPeriodHistory(mode).collectLatest { history ->
+                val targetPeriod = _uiState.value.serverInfo?.currentPeriodId
                 val details = if (history.isNotEmpty()) {
-                    mlEngine.analyzeAndPredict(history, _uiState.value.selectedAlgorithm)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        mlEngine.analyzeAndPredict(history, _uiState.value.selectedAlgorithm, targetPeriod)
+                    }
                 } else null
 
                 _uiState.value = _uiState.value.copy(
@@ -116,7 +162,11 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
         timerJob = viewModelScope.launch {
             while (true) {
                 val mode = _uiState.value.selectedGameMode
-                val info = repository.calculateCurrentServerPeriod(mode)
+                val info = repository.calculateCurrentServerPeriod(
+                    gameMode = mode,
+                    customBasePeriodId = _uiState.value.customBasePeriodId,
+                    customSetTimeMs = _uiState.value.customSetTimeMs
+                )
 
                 // Check if new period closed
                 if (lastObservedPeriodId.isNotEmpty() && info.currentPeriodId != lastObservedPeriodId) {
@@ -135,10 +185,16 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun onPeriodClosed(closedPeriodId: String, mode: String) {
-        // Ingest new winning digit result for closed period
-        val winningDigit = (0..9).random()
+        // 1. Get deterministic online winning digit for the period that just closed
+        val winningDigit = repository.getDigitForPeriod(closedPeriodId, mode)
+
+        // 2. Explicitly ingest and record closed period result into Room DB & verify prediction
         repository.ingestServerPeriodResult(closedPeriodId, winningDigit, mode)
 
+        // 3. Sync and ensure 500 periods in history are up to date
+        repository.syncOnlinePeriodHistory(mode, _uiState.value.customBasePeriodId, _uiState.value.customSetTimeMs)
+
+        // 4. Automatically generate new ML prediction for the new active period
         if (_uiState.value.autoPredictEnabled) {
             generateMlPrediction()
         }
@@ -151,10 +207,14 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
 
             val mode = _uiState.value.selectedGameMode
             val algo = _uiState.value.selectedAlgorithm
-            val prediction = repository.runMlPrediction(mode, algo)
+            val baseId = _uiState.value.customBasePeriodId
+            val setTime = _uiState.value.customSetTimeMs
+
+            val prediction = repository.runMlPrediction(mode, algo, baseId, setTime)
 
             val currentHistory = _uiState.value.periodHistory
-            val mlOutput = mlEngine.analyzeAndPredict(currentHistory, algo)
+            val targetPeriod = prediction.targetPeriodId
+            val mlOutput = mlEngine.analyzeAndPredict(currentHistory, algo, targetPeriod)
 
             _uiState.value = _uiState.value.copy(
                 latestPrediction = prediction,

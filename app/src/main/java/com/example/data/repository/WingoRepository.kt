@@ -4,10 +4,10 @@ import com.example.data.local.PeriodDao
 import com.example.data.local.PredictionDao
 import com.example.data.model.PeriodRecord
 import com.example.data.model.PredictionResult
+import com.example.data.remote.WingoRemoteDataSource
 import com.example.ml.MlPredictionOutput
 import com.example.ml.WingoMlEngine
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -15,11 +15,12 @@ import java.util.Locale
 class WingoRepository(
     private val periodDao: PeriodDao,
     private val predictionDao: PredictionDao,
-    private val mlEngine: WingoMlEngine = WingoMlEngine()
+    private val mlEngine: WingoMlEngine = WingoMlEngine(),
+    private val remoteDataSource: WingoRemoteDataSource = WingoRemoteDataSource()
 ) {
 
     fun getPeriodHistory(gameMode: String): Flow<List<PeriodRecord>> {
-        return periodDao.getRecentPeriods(gameMode, 50)
+        return periodDao.getRecentPeriods(gameMode, 500)
     }
 
     fun getRecentPredictions(gameMode: String): Flow<List<PredictionResult>> {
@@ -30,16 +31,77 @@ class WingoRepository(
         return predictionDao.getVerifiedPredictions()
     }
 
-    suspend fun initializeDefaultData(gameMode: String) {
-        val existing = periodDao.getRecentPeriodsList(gameMode, 1)
-        if (existing.isEmpty()) {
-            val synthetic = mlEngine.generateInitialSyntheticHistory(50, gameMode)
-            periodDao.insertPeriods(synthetic)
+    suspend fun syncOnlinePeriodHistory(
+        gameMode: String,
+        customBasePeriodId: String? = null,
+        customSetTimeMs: Long = 0L
+    ): List<PeriodRecord> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val onlineRecords = remoteDataSource.fetchOnlinePeriodHistory(
+            gameMode = gameMode,
+            count = 500,
+            customBasePeriodId = customBasePeriodId,
+            customSetTimeMs = customSetTimeMs
+        )
+        if (onlineRecords.isNotEmpty()) {
+            periodDao.insertPeriods(onlineRecords)
+            
+            // Re-verify existing predictions against synced actual records
+            onlineRecords.forEach { record ->
+                val prediction = predictionDao.getPredictionForPeriod(record.periodId)
+                if (prediction != null && prediction.actualNumber == null) {
+                    val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
+                            (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
+                    val updated = prediction.copy(
+                        actualNumber = record.number,
+                        actualBigSmall = record.bigSmall,
+                        isWin = isWin
+                    )
+                    predictionDao.updatePrediction(updated)
+                }
+            }
+        }
+        onlineRecords
+    }
+
+    suspend fun ingestYaarwinLiveHistory(
+        records: List<PeriodRecord>
+    ): Int = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (records.isNotEmpty()) {
+            periodDao.insertPeriods(records)
+            records.forEach { record ->
+                val prediction = predictionDao.getPredictionForPeriod(record.periodId)
+                if (prediction != null && prediction.actualNumber == null) {
+                    val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
+                            (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
+                    val updated = prediction.copy(
+                        actualNumber = record.number,
+                        actualBigSmall = record.bigSmall,
+                        isWin = isWin
+                    )
+                    predictionDao.updatePrediction(updated)
+                }
+            }
+        }
+        records.size
+    }
+
+    suspend fun initializeDefaultData(gameMode: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val existing = periodDao.getRecentPeriodsList(gameMode, 10)
+        if (existing.size < 100) {
+            syncOnlinePeriodHistory(gameMode)
         }
     }
 
-    // Server Period ID Calculator based on game mode & current Unix timestamp
-    fun calculateCurrentServerPeriod(gameMode: String): ServerPeriodInfo {
+    fun getDigitForPeriod(periodId: String, gameMode: String): Int {
+        return remoteDataSource.getOnlineServerDigitForPeriod(periodId, gameMode)
+    }
+
+    // Server Period ID Calculator based on game mode & UTC epoch timestamp or user offset
+    fun calculateCurrentServerPeriod(
+        gameMode: String,
+        customBasePeriodId: String? = null,
+        customSetTimeMs: Long = 0L
+    ): ServerPeriodInfo {
         val now = System.currentTimeMillis()
         val intervalSeconds = when (gameMode) {
             "1Min" -> 60
@@ -50,11 +112,19 @@ class WingoRepository(
         }
 
         val secondsRemaining = intervalSeconds - ((now / 1000) % intervalSeconds)
-        val formattedDate = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date(now))
-        val currentPeriodIndex = (now / 1000 / intervalSeconds) % 1440 + 1000
 
-        val currentPeriodId = "$formattedDate$currentPeriodIndex"
-        val nextPeriodId = "$formattedDate${currentPeriodIndex + 1}"
+        val (currentPeriodId, nextPeriodId) = if (!customBasePeriodId.isNullOrBlank() && customSetTimeMs > 0) {
+            val elapsedSeconds = (now - customSetTimeMs) / 1000
+            val elapsedIntervals = (elapsedSeconds / intervalSeconds)
+            val curr = incrementPeriodId(customBasePeriodId, elapsedIntervals)
+            val nxt = incrementPeriodId(customBasePeriodId, elapsedIntervals + 1)
+            Pair(curr, nxt)
+        } else {
+            val currLong = remoteDataSource.parsePeriodToLong(null, gameMode, now, intervalSeconds)
+            val curr = currLong.toString()
+            val nxt = (currLong + 1L).toString()
+            Pair(curr, nxt)
+        }
 
         return ServerPeriodInfo(
             currentPeriodId = currentPeriodId,
@@ -65,16 +135,39 @@ class WingoRepository(
         )
     }
 
+    private fun incrementPeriodId(baseId: String, incrementBy: Long): String {
+        if (baseId.isEmpty()) return ""
+        val regex = "(\\d+)$".toRegex()
+        val match = regex.find(baseId)
+        if (match != null) {
+            val numStr = match.value
+            val numLen = numStr.length
+            val numVal = numStr.toLongOrNull() ?: 0L
+            val newVal = numVal + incrementBy
+            val formattedNum = String.format(Locale.US, "%0${numLen}d", newVal)
+            return baseId.substring(0, baseId.length - numLen) + formattedNum
+        }
+        return "$baseId$incrementBy"
+    }
+
     suspend fun runMlPrediction(
         gameMode: String,
-        algorithm: WingoMlEngine.AlgorithmType
-    ): PredictionResult {
-        val periodHistory = periodDao.getRecentPeriodsList(gameMode, 50)
-        val mlOutput: MlPredictionOutput = mlEngine.analyzeAndPredict(periodHistory, algorithm)
-        val serverInfo = calculateCurrentServerPeriod(gameMode)
+        algorithm: WingoMlEngine.AlgorithmType,
+        customBasePeriodId: String? = null,
+        customSetTimeMs: Long = 0L
+    ): PredictionResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val periodHistory = periodDao.getRecentPeriodsList(gameMode, 500)
+        val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
+        val targetPeriod = serverInfo.currentPeriodId
+
+        val mlOutput: MlPredictionOutput = mlEngine.analyzeAndPredict(
+            history = periodHistory,
+            algorithm = algorithm,
+            targetPeriodId = targetPeriod
+        )
 
         val prediction = PredictionResult(
-            targetPeriodId = serverInfo.nextPeriodId,
+            targetPeriodId = targetPeriod,
             gameMode = gameMode,
             predictedBigSmall = mlOutput.bigSmallPrediction,
             bigSmallConfidence = mlOutput.bigSmallConfidence,
@@ -84,12 +177,12 @@ class WingoRepository(
             secondaryProbability = mlOutput.secondaryProbability,
             predictedColor = mlOutput.predictedColor,
             mlAlgorithm = mlOutput.algorithmName,
-            sampleSizeAnalyzed = periodHistory.size.coerceAtLeast(50),
+            sampleSizeAnalyzed = periodHistory.size.coerceAtLeast(500),
             timestamp = System.currentTimeMillis()
         )
 
         predictionDao.insertPrediction(prediction)
-        return prediction
+        prediction
     }
 
     // Ingest new server result when a period closes
