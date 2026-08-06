@@ -36,7 +36,6 @@ import com.example.ui.theme.TextPrimary
 
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     PREDICT("PREDICT", Icons.Default.Dashboard),
-    YAARWIN("YAARWIN", Icons.Default.Language),
     HISTORY("HISTORY", Icons.Default.History),
     ANALYTICS("STATS", Icons.Default.Analytics),
     ENGINE("ENGINE", Icons.Default.Tune)

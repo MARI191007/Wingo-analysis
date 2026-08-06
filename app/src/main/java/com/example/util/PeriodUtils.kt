@@ -8,9 +8,8 @@ import java.util.TimeZone
 object PeriodUtils {
 
     /**
-     * Normalizes any raw period ID string (e.g. "*010570", "010570", "10570", "20260805100010570", "2026080510570")
-     * into the standard 13-digit canonical period ID format (e.g. "2026080510570")
-     * that matches Wingo server clocks and local database primary keys.
+     * Normalizes any raw period ID string into standard canonical period ID format
+     * that matches Wingo live draw game issue numbers (e.g. "20260806100010850").
      */
     fun normalizePeriodId(
         rawId: String,
@@ -20,24 +19,27 @@ object PeriodUtils {
         val clean = rawId.filter { it.isDigit() }
         if (clean.isBlank()) return rawId
 
+        // If clean is already a full period ID (e.g. 10-20 digits like 20260806100010850), preserve it directly
+        if (clean.length >= 10) {
+            return clean
+        }
+
         val sdf = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
+        val datePrefix = sdf.format(Date(timestampMs))
 
-        val datePrefix = if (clean.length >= 12 && clean.startsWith("202")) {
-            clean.substring(0, 8)
-        } else {
-            sdf.format(Date(timestampMs))
+        val typeCode = when (gameMode) {
+            "3Min" -> "10002"
+            "5Min" -> "10003"
+            "10Min" -> "10004"
+            "30s" -> "10000"
+            else -> "10001"
         }
 
         val index4 = if (clean.length >= 4) clean.takeLast(4) else clean.padStart(4, '0')
-        val modePrefix = when (gameMode) {
-            "3Min" -> "3"
-            "5Min" -> "5"
-            "10Min" -> "10"
-            else -> "1"
-        }
 
-        return "$datePrefix$modePrefix$index4"
+        return "$datePrefix$typeCode$index4"
     }
 }
+

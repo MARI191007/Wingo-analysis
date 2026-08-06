@@ -145,30 +145,6 @@ fun MainPredictorScreen(
                             }
                         }
 
-                        NavigationTab.YAARWIN -> {
-                            Column {
-                                YaarwinWebCard(
-                                    currentGameMode = uiState.selectedGameMode,
-                                    onHistoryExtracted = { records ->
-                                        viewModel.ingestYaarwinLiveHistory(records)
-                                    }
-                                )
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                PeriodHistoryTable(
-                                    periods = uiState.periodHistory,
-                                    predictions = uiState.verifiedPredictions,
-                                    onSyncClick = { viewModel.sync500OnlinePeriods() },
-                                    onUpdatePeriodResult = { periodId, digit ->
-                                        viewModel.injectManualPeriod(periodId, digit)
-                                    }
-                                )
-
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
-                        }
-
                         NavigationTab.HISTORY -> {
                             Column {
                                 PeriodHistoryTable(

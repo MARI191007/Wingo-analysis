@@ -162,85 +162,78 @@ class WingoMlEngine {
         }
 
         // ---------------------------------------------------------------------
-        // 6. TARGET PERIOD HARMONICS SEED MATRIX
+        // 6. TARGET PERIOD HARMONICS (High-entropy period-specific neural seed)
         // ---------------------------------------------------------------------
-        val targetSeedVector = DoubleArray(10)
+        val targetSeedVector = DoubleArray(10) { 0.10 }
         if (!targetPeriodId.isNullOrBlank()) {
-            val seedKey = "OFFICIAL_WINGO_NEURAL_HARMONIC_${targetPeriodId}"
-            var hash = 1125899906842597L
-            for (c in seedKey) {
-                hash = (31 * hash + c.code.toLong()) and 0x7FFFFFFFFFFFFFFFL
-            }
-            val primarySeedDigit = (abs(hash) % 10).toInt()
-            val secondarySeedDigit = (abs(hash / 10) % 10).toInt()
+            val digitsOnly = targetPeriodId.filter { it.isDigit() }
+            val pLong = digitsOnly.toLongOrNull() ?: targetPeriodId.hashCode().toLong()
+
+            // Dynamic mixing seeds using pLong and algorithm
+            val h1 = kotlin.math.abs(splitMix64(pLong * 31L + algorithm.ordinal * 17L))
+            val h2 = kotlin.math.abs(splitMix64(pLong * 101L + algorithm.ordinal * 43L + 13L))
+            val h3 = kotlin.math.abs(splitMix64(pLong * 997L + algorithm.ordinal * 71L + 29L))
+            val h4 = kotlin.math.abs(splitMix64(pLong * 7919L + 37L))
+
+            val seed1 = (h1 % 10).toInt()
+            val seed2 = (h2 % 10).toInt()
+            val seed3 = (h3 % 10).toInt()
+            val seed4 = (h4 % 10).toInt()
+
             for (d in 0..9) {
-                if (d == primarySeedDigit) targetSeedVector[d] = 0.28
-                else if (d == secondarySeedDigit) targetSeedVector[d] = 0.18
-                else targetSeedVector[d] = 0.07
+                targetSeedVector[d] = 0.05 +
+                        (if (d == seed1) 0.18 else 0.0) +
+                        (if (d == seed2) 0.14 else 0.0) +
+                        (if (d == seed3) 0.11 else 0.0) +
+                        (if (d == seed4) 0.08 else 0.0)
             }
-        } else {
-            for (d in 0..9) targetSeedVector[d] = 0.10
         }
 
         // ---------------------------------------------------------------------
-        // 7. ENSEMBLE COMBINATION & PSYCHOLOGICAL WEIGHT ADJUSTMENT
+        // 7. ENSEMBLE COMBINATION & DYNAMIC PATTERN WEIGHTING
         // ---------------------------------------------------------------------
-        var bigSmallBias = 0.0
-
-        // Shift bias based on Psychological Action
-        if (psychologicalAction == "COUNTER-ATTACK REVERSE") {
-            if (reverseBs == "BIG") bigSmallBias += 0.25 else bigSmallBias -= 0.25
-        } else {
-            if (forwardBs == "BIG") bigSmallBias += 0.20 else bigSmallBias -= 0.20
-        }
-
         for (d in 0..9) {
             when (algorithm) {
                 AlgorithmType.MARKOV_CHAIN -> {
                     digitProbabilities[d] = (markovVector[d] * 0.35) +
                             (ngramDigitVector[d] * 0.25) +
-                            (frequencyVector[d] * 0.25) +
-                            (targetSeedVector[d] * 0.15)
+                            (frequencyVector[d] * 0.20) +
+                            (targetSeedVector[d] * 0.20)
                 }
                 AlgorithmType.TREND_MOMENTUM -> {
-                    digitProbabilities[d] = (frequencyVector[d] * 0.40) +
+                    digitProbabilities[d] = (frequencyVector[d] * 0.35) +
                             (ngramDigitVector[d] * 0.25) +
                             (markovVector[d] * 0.20) +
-                            (targetSeedVector[d] * 0.15)
+                            (targetSeedVector[d] * 0.20)
                 }
-                AlgorithmType.HYBRID_AI, AlgorithmType.DEEP_PSYCHOLOGICAL -> {
+                AlgorithmType.HYBRID_AI -> {
                     digitProbabilities[d] = (markovVector[d] * 0.30) +
                             (ngramDigitVector[d] * 0.25) +
                             (frequencyVector[d] * 0.25) +
                             (targetSeedVector[d] * 0.20)
                 }
+                AlgorithmType.DEEP_PSYCHOLOGICAL -> {
+                    digitProbabilities[d] = (markovVector[d] * 0.25) +
+                            (ngramDigitVector[d] * 0.25) +
+                            (frequencyVector[d] * 0.25) +
+                            (targetSeedVector[d] * 0.25)
+                }
             }
 
-            // Anti-repetition discount
+            // Anti-repetition discount for recent identical digits in history
             val recent3 = periodsToAnalyze.take(3).map { it.number }
             if (recent3.count { it == d } >= 2) {
                 digitProbabilities[d] *= 0.30
             } else if (recent3.firstOrNull() == d) {
-                digitProbabilities[d] *= 0.80
-            }
-
-            // Apply psychological Big/Small bias
-            if (d >= 5) {
-                digitProbabilities[d] = max(0.005, digitProbabilities[d] + (bigSmallBias / 5.0))
-            } else {
-                digitProbabilities[d] = max(0.005, digitProbabilities[d] - (bigSmallBias / 5.0))
+                digitProbabilities[d] *= 0.65
             }
         }
 
         // Normalize probabilities to 100%
         val sumProb = digitProbabilities.sum()
         val normalizedList = MutableList(10) { i ->
-            i to ((digitProbabilities[i] / sumProb) * 100.0).toFloat()
+            i to (if (sumProb > 0) ((digitProbabilities[i] / sumProb) * 100.0).toFloat() else 10.0f)
         }
-        normalizedList.sortByDescending { it.second }
-
-        val primary = normalizedList[0]
-        val secondary = normalizedList[1]
 
         var smallSum = 0f
         var bigSum = 0f
@@ -249,13 +242,30 @@ class WingoMlEngine {
             else bigSum += item.second
         }
 
-        // Final prediction decision
-        val (finalBs, bsConfidence) = if (psychologicalAction == "COUNTER-ATTACK REVERSE" && dealerTrapScore > 50f) {
-            reverseBs to max(82.0f, min(98.5f, max(bigSum, smallSum) + (reverseInversionScore * 0.15f)))
+        // Final prediction decision based strictly on natural probability weight sums
+        val (finalBs, bsConfidence) = if (psychologicalAction == "COUNTER-ATTACK REVERSE" && dealerTrapScore > 65f) {
+            reverseBs to max(80.0f, min(97.5f, max(bigSum, smallSum) + (reverseInversionScore * 0.12f)))
         } else if (bigSum >= smallSum) {
-            "BIG" to max(75.0f, min(97.8f, bigSum + (forwardMatch * 0.15f)))
+            "BIG" to max(72.0f, min(97.5f, bigSum + (forwardMatch * 0.12f)))
         } else {
-            "SMALL" to max(75.0f, min(97.8f, smallSum + (forwardMatch * 0.15f)))
+            "SMALL" to max(72.0f, min(97.5f, smallSum + (forwardMatch * 0.12f)))
+        }
+
+        // Filter primary & secondary digits to guarantee strict alignment with predicted Big/Small category
+        val matchedCategoryDigits = normalizedList.filter {
+            if (finalBs == "BIG") it.first >= 5 else it.first < 5
+        }.sortedByDescending { it.second }
+
+        var primary = matchedCategoryDigits.firstOrNull() ?: normalizedList.maxByOrNull { it.second }!!
+        var secondary = matchedCategoryDigits.getOrNull(1)
+            ?: normalizedList.filter { it.first != primary.first }.maxByOrNull { it.second }
+            ?: primary
+
+        // Ensure primary and secondary are distinct
+        if (secondary.first == primary.first) {
+            val fallbackDigits = if (finalBs == "BIG") listOf(5, 6, 7, 8, 9) else listOf(0, 1, 2, 3, 4)
+            val alternate = fallbackDigits.firstOrNull { it != primary.first } ?: ((primary.first + 1) % 10)
+            secondary = alternate to (primary.second * 0.75f)
         }
 
         val predictedColor = when (primary.first) {
@@ -322,7 +332,11 @@ class WingoMlEngine {
     }
 
     private fun detectForwardPattern(sequence: List<String>): Triple<String, Float, String> {
-        if (sequence.size < 6) return Triple("STANDARD FLOW", 70.0f, "BIG")
+        val bigCount = sequence.count { it == "BIG" }
+        val smallCount = sequence.size - bigCount
+        val defaultBs = if (smallCount >= bigCount) "BIG" else "SMALL"
+
+        if (sequence.size < 6) return Triple("STANDARD FLOW", 70.0f, defaultBs)
 
         // 1. Check Dragon Streak (AAAA...)
         val first = sequence[0]
@@ -370,7 +384,11 @@ class WingoMlEngine {
     }
 
     private fun detectReversePattern(sequence: List<String>, history: List<PeriodRecord>): Triple<String, Float, String> {
-        if (sequence.size < 4) return Triple("STABLE SYMMETRY", 40.0f, "BIG")
+        val bigCount = sequence.count { it == "BIG" }
+        val smallCount = sequence.size - bigCount
+        val defaultReverse = if (bigCount >= smallCount) "SMALL" else "BIG"
+
+        if (sequence.size < 4) return Triple("STABLE SYMMETRY", 40.0f, defaultReverse)
 
         val first = sequence[0]
         var streak = 0
@@ -395,14 +413,7 @@ class WingoMlEngine {
             return Triple("ANTI-ZIGZAG BREAKOUT", 85.0f, expectedBreak)
         }
 
-        val lastDigit = history.firstOrNull()?.number ?: 5
-        if (lastDigit == 0 || lastDigit == 5) {
-            val colorFlip = if (sequence.firstOrNull() == "BIG") "SMALL" else "BIG"
-            return Triple("VIOLET SYMMETRY REVERSAL", 89.0f, colorFlip)
-        }
-
-        val defaultReverse = if (sequence.firstOrNull() == "BIG") "SMALL" else "BIG"
-        return Triple("PATTERN INVERSION COUNTER", 68.0f, defaultReverse)
+        return Triple("PATTERN INVERSION COUNTER", 55.0f, defaultReverse)
     }
 
     private fun evaluateDealerTraps(
@@ -474,5 +485,14 @@ class WingoMlEngine {
 
     fun generateInitialSyntheticHistory(count: Int = 500, gameMode: String = "1Min"): List<PeriodRecord> {
         return emptyList()
+    }
+
+    private fun splitMix64(z: Long): Long {
+        var x = z xor (z ushr 30)
+        x *= -4658895280553760867L
+        x = x xor (x ushr 27)
+        x *= -7723592293110705685L
+        x = x xor (x ushr 31)
+        return x
     }
 }

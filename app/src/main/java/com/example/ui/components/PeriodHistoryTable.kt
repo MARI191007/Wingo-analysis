@@ -104,24 +104,6 @@ fun PeriodHistoryTable(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onSyncClick != null) {
-                        Surface(
-                            onClick = onSyncClick,
-                            shape = RoundedCornerShape(10.dp),
-                            color = LiveGreen.copy(alpha = 0.15f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, LiveGreen.copy(alpha = 0.4f)),
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            Text(
-                                text = "↻ SYNC / FIX DATA",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = LiveGreen,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = ImmersiveBackground
@@ -194,33 +176,11 @@ fun PeriodHistoryTable(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "Live history data is syncing from Yaarwin / WinGo Servers...",
+                        text = "Live history data is auto-syncing from WinGo Draw API...",
                         color = TextMuted,
                         fontSize = 12.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    if (onSyncClick != null) {
-                        Button(
-                            onClick = onSyncClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = ImmersiveIndigoPrimary),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = TextPrimary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "FETCH & SYNC YAARWIN / WINGO DATA",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        }
-                    }
                 }
             } else {
                 LazyColumn(
@@ -378,7 +338,7 @@ fun PeriodRowItem(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Period #${period.periodId.takeLast(8)}",
+                        text = "Period #${period.periodId}",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary

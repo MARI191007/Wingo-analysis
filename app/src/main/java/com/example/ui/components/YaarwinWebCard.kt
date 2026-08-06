@@ -44,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,11 +84,29 @@ fun YaarwinWebCard(
     var isExpandedHeight by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
+    val gameCode = when (currentGameMode) {
+        "30s" -> "WinGo_30S"
+        "3Min" -> "WinGo_3M"
+        "5Min" -> "WinGo_5M"
+        "10Min" -> "WinGo_10M"
+        else -> "WinGo_1M"
+    }
+    val yaarwinWingoUrl = "https://www.20yaarwin.com/#/saasLottery/WinGo?gameCode=$gameCode&lottery=WinGo"
     val wingoAnalystUrl = "https://wingoanalyst.com/#/wingo_1m"
-    val yaarwinWingoUrl = "https://www.20yaarwin.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    val tirangaWingoUrl = "https://www.tirangagames.in/#/saasLottery/WinGo"
+    val damanWingoUrl = "https://damangames.in/#/saasLottery/WinGo"
     val yaarwinClubUrl = "https://yaarwin.club"
 
-    var currentActiveUrl by remember { mutableStateOf(wingoAnalystUrl) }
+    var currentActiveUrl by remember(currentGameMode) { mutableStateOf(yaarwinWingoUrl) }
+    var customUrlInput by remember { mutableStateOf("") }
+    var showCustomUrlBar by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentGameMode) {
+        if (currentActiveUrl.contains("20yaarwin.com")) {
+            currentActiveUrl = yaarwinWingoUrl
+            webViewRef?.loadUrl(yaarwinWingoUrl)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -170,65 +189,129 @@ fun YaarwinWebCard(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Fast URL switcher chips
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Button(
-                onClick = {
-                    currentActiveUrl = wingoAnalystUrl
-                    webViewRef?.loadUrl(wingoAnalystUrl)
-                },
-                modifier = Modifier.weight(1.3f).height(32.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentActiveUrl == wingoAnalystUrl) NeonGold else ImmersiveCardBorder
-                )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = "WINGOANALYST 1M",
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (currentActiveUrl == wingoAnalystUrl) ImmersiveSurface else TextPrimary
-                )
+                Button(
+                    onClick = {
+                        currentActiveUrl = yaarwinWingoUrl
+                        webViewRef?.loadUrl(yaarwinWingoUrl)
+                        showCustomUrlBar = false
+                    },
+                    modifier = Modifier.weight(1.3f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentActiveUrl == yaarwinWingoUrl) NeonGold else ImmersiveCardBorder
+                    )
+                ) {
+                    Text(
+                        text = "20YAARWIN",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (currentActiveUrl == yaarwinWingoUrl) ImmersiveSurface else TextPrimary
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        currentActiveUrl = tirangaWingoUrl
+                        webViewRef?.loadUrl(tirangaWingoUrl)
+                        showCustomUrlBar = false
+                    },
+                    modifier = Modifier.weight(1f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentActiveUrl == tirangaWingoUrl) NeonGold else ImmersiveCardBorder
+                    )
+                ) {
+                    Text(
+                        text = "TIRANGA",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (currentActiveUrl == tirangaWingoUrl) ImmersiveSurface else TextPrimary
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        currentActiveUrl = damanWingoUrl
+                        webViewRef?.loadUrl(damanWingoUrl)
+                        showCustomUrlBar = false
+                    },
+                    modifier = Modifier.weight(1f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentActiveUrl == damanWingoUrl) NeonGold else ImmersiveCardBorder
+                    )
+                ) {
+                    Text(
+                        text = "DAMAN",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (currentActiveUrl == damanWingoUrl) ImmersiveSurface else TextPrimary
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        showCustomUrlBar = !showCustomUrlBar
+                    },
+                    modifier = Modifier.weight(0.9f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (showCustomUrlBar) LiveGreen else ImmersiveCardBorder
+                    )
+                ) {
+                    Text(
+                        text = "+ URL",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (showCustomUrlBar) ImmersiveSurface else TextPrimary
+                    )
+                }
             }
 
-            Button(
-                onClick = {
-                    currentActiveUrl = yaarwinWingoUrl
-                    webViewRef?.loadUrl(yaarwinWingoUrl)
-                },
-                modifier = Modifier.weight(1.1f).height(32.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentActiveUrl == yaarwinWingoUrl) NeonGold else ImmersiveCardBorder
-                )
-            ) {
-                Text(
-                    text = "20YAARWIN",
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (currentActiveUrl == yaarwinWingoUrl) ImmersiveSurface else TextPrimary
-                )
-            }
-
-            Button(
-                onClick = {
-                    currentActiveUrl = yaarwinClubUrl
-                    webViewRef?.loadUrl(yaarwinClubUrl)
-                },
-                modifier = Modifier.weight(1f).height(32.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentActiveUrl == yaarwinClubUrl) NeonGold else ImmersiveCardBorder
-                )
-            ) {
-                Text(
-                    text = "YAARWIN.CLUB",
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (currentActiveUrl == yaarwinClubUrl) ImmersiveSurface else TextPrimary
-                )
+            if (showCustomUrlBar) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = customUrlInput,
+                        onValueChange = { customUrlInput = it },
+                        placeholder = { Text("Paste custom WinGo platform URL...", fontSize = 10.sp, color = TextMuted) },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NeonGold,
+                            unfocusedBorderColor = ImmersiveCardBorder,
+                            focusedContainerColor = ImmersiveCardBorder.copy(alpha = 0.3f),
+                            unfocusedContainerColor = ImmersiveCardBorder.copy(alpha = 0.3f)
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Button(
+                        onClick = {
+                            if (customUrlInput.isNotBlank()) {
+                                var formatted = customUrlInput.trim()
+                                if (!formatted.startsWith("http://") && !formatted.startsWith("https://")) {
+                                    formatted = "https://$formatted"
+                                }
+                                currentActiveUrl = formatted
+                                webViewRef?.loadUrl(formatted)
+                            }
+                        },
+                        modifier = Modifier.height(44.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = LiveGreen)
+                    ) {
+                        Text("LOAD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ImmersiveSurface)
+                    }
+                }
             }
         }
 
@@ -363,34 +446,9 @@ fun YaarwinWebCard(
         ) {
             Button(
                 onClick = {
-                    webViewRef?.let { view ->
-                        injectYaarwinScraperScript(view)
-                    }
-                },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = NeonGold)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = ImmersiveSurface,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "SYNC WINGO HISTORY",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = ImmersiveSurface
-                )
-            }
-
-            Button(
-                onClick = {
                     webViewRef?.loadUrl(yaarwinWingoUrl)
                 },
-                modifier = Modifier.weight(1f).height(40.dp),
+                modifier = Modifier.fillMaxWidth().height(40.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveCardBorder)
             ) {
@@ -400,9 +458,9 @@ fun YaarwinWebCard(
                     tint = TextPrimary,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "20YAARWIN WINGO",
+                    text = "RELOAD 20YAARWIN WINGO GAME",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -484,58 +542,69 @@ private fun injectYaarwinScraperScript(webView: WebView?) {
                     }
                 }
 
-                // Also scan active DOM nodes & whole page text
-                var records = [];
-                var seenPeriods = {};
+                if (!window.__yaarwin_interval) {
+                    window.__yaarwin_interval = setInterval(function() {
+                        try {
+                            scanDomAndReport();
+                        } catch(e) {}
+                    }, 2500);
+                }
 
-                // 1. Scan entire page text for patterns like "*010570 3 Small" or "010570 3 Small"
-                var fullText = document.body ? (document.body.innerText || '') : '';
-                var globalRegex = /\*?(\d{5,20})[\s\n\t]+([0-9])[\s\n\t]+(BIG|SMALL|Big|Small)/gi;
-                var match;
-                while ((match = globalRegex.exec(fullText)) !== null) {
-                    var pId = match[1];
-                    var num = parseInt(match[2]);
-                    var bs = match[3].toUpperCase();
-                    if (!seenPeriods[pId]) {
-                        seenPeriods[pId] = true;
-                        records.push({
-                            periodId: pId,
-                            number: num,
-                            bigSmall: bs
+                function scanDomAndReport() {
+                    var records = [];
+                    var seenPeriods = {};
+
+                    // 1. Scan entire page text for patterns like "*010570 3 Small" or "010570 3 Small"
+                    var fullText = document.body ? (document.body.innerText || '') : '';
+                    var globalRegex = /\*?(\d{5,20})[\s\n\t]+([0-9])[\s\n\t]+(BIG|SMALL|Big|Small)/gi;
+                    var match;
+                    while ((match = globalRegex.exec(fullText)) !== null) {
+                        var pId = match[1];
+                        var num = parseInt(match[2]);
+                        var bs = match[3].toUpperCase();
+                        if (!seenPeriods[pId]) {
+                            seenPeriods[pId] = true;
+                            records.push({
+                                periodId: pId,
+                                number: num,
+                                bigSmall: bs
+                            });
+                        }
+                    }
+
+                    // 2. Scan DOM elements (tables, list items, etc.)
+                    var selectors = [
+                        'tr', '.record-item', '.van-list__item', '.list-item', 
+                        'div[class*="period"]', 'div[class*="history"]', 'div[class*="game"]', '.van-row', 'li'
+                    ];
+
+                    selectors.forEach(function(sel) {
+                        var elements = document.querySelectorAll(sel);
+                        elements.forEach(function(el) {
+                            var text = el.innerText || '';
+                            var m = text.match(/\*?(\d{5,20})[\s\S]*?\b([0-9])\b[\s\S]*?(BIG|SMALL|Big|Small|green|red|violet)?/i);
+                            if (m) {
+                                var pId = m[1];
+                                var num = parseInt(m[2]);
+                                var bs = m[3] ? m[3].toUpperCase() : (num >= 5 ? 'BIG' : 'SMALL');
+                                if (!seenPeriods[pId] && num >= 0 && num <= 9) {
+                                    seenPeriods[pId] = true;
+                                    records.push({
+                                        periodId: pId,
+                                        number: num,
+                                        bigSmall: bs
+                                    });
+                                }
+                            }
                         });
+                    });
+
+                    if (window.YaarwinBridge && records.length > 0) {
+                        window.YaarwinBridge.onYaarwinHistoryReceived(JSON.stringify(records));
                     }
                 }
 
-                // 2. Scan DOM elements (tables, list items, etc.)
-                var selectors = [
-                    'tr', '.record-item', '.van-list__item', '.list-item', 
-                    'div[class*="period"]', 'div[class*="history"]', 'div[class*="game"]', '.van-row', 'li'
-                ];
-
-                selectors.forEach(function(sel) {
-                    var elements = document.querySelectorAll(sel);
-                    elements.forEach(function(el) {
-                        var text = el.innerText || '';
-                        var m = text.match(/\*?(\d{5,20})[\s\S]*?\b([0-9])\b[\s\S]*?(BIG|SMALL|Big|Small|green|red|violet)?/i);
-                        if (m) {
-                            var pId = m[1];
-                            var num = parseInt(m[2]);
-                            var bs = m[3] ? m[3].toUpperCase() : (num >= 5 ? 'BIG' : 'SMALL');
-                            if (!seenPeriods[pId] && num >= 0 && num <= 9) {
-                                seenPeriods[pId] = true;
-                                records.push({
-                                    periodId: pId,
-                                    number: num,
-                                    bigSmall: bs
-                                });
-                            }
-                        }
-                    });
-                });
-
-                if (window.YaarwinBridge && records.length > 0) {
-                    window.YaarwinBridge.onYaarwinHistoryReceived(JSON.stringify(records));
-                }
+                scanDomAndReport();
             } catch (err) {
                 console.error(err);
             }

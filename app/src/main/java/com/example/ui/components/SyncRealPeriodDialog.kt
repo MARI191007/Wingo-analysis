@@ -296,7 +296,7 @@ fun SyncRealPeriodDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Copy and paste period history directly from 20yaarwin / wingoanalyst / game website:",
+                        text = "Copy and paste period history directly from game website or API:",
                         fontSize = 10.sp,
                         color = TextMuted,
                         modifier = Modifier.align(Alignment.Start)
