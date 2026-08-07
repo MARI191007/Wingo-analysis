@@ -177,7 +177,7 @@ fun PredictionStatsCard(
                             ) {
                                 Column {
                                     Text(
-                                        text = "Period: ${item.targetPeriodId.takeLast(8)}",
+                                        text = "Period: ${item.targetPeriodId}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = TextPrimary

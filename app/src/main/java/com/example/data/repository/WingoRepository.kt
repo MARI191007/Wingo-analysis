@@ -28,8 +28,8 @@ class WingoRepository(
         return predictionDao.getRecentPredictions(gameMode)
     }
 
-    fun getVerifiedPredictions(): Flow<List<PredictionResult>> {
-        return predictionDao.getVerifiedPredictions()
+    fun getVerifiedPredictions(gameMode: String): Flow<List<PredictionResult>> {
+        return predictionDao.getVerifiedPredictionsForMode(gameMode)
     }
 
     suspend fun seedBaselinePeriodHistory(gameMode: String): List<PeriodRecord> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -84,9 +84,18 @@ class WingoRepository(
             periodDao.insertPeriods(onlineRecords)
             
             // Re-verify existing predictions against synced actual records
+            val predictionsList = predictionDao.getAllPredictionsList()
             onlineRecords.forEach { record ->
-                val prediction = predictionDao.getPredictionForPeriod(record.periodId)
-                if (prediction != null && prediction.actualNumber == null) {
+                val normRecordId = PeriodUtils.normalizePeriodId(record.periodId, gameMode)
+                val suffix = normRecordId.takeLast(4)
+
+                predictionsList.filter { pred ->
+                    pred.gameMode == gameMode && (
+                        pred.targetPeriodId == normRecordId ||
+                        pred.targetPeriodId == record.periodId ||
+                        (suffix.length >= 4 && pred.targetPeriodId.endsWith(suffix))
+                    )
+                }.forEach { prediction ->
                     val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
                             (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
                     val updated = prediction.copy(
@@ -387,7 +396,7 @@ class WingoRepository(
         if (periodHistory.isEmpty()) return@withContext null
 
         val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
-        val targetPeriod = serverInfo.nextPeriodId
+        val targetPeriod = serverInfo.currentPeriodId
 
         val mlOutput: MlPredictionOutput = mlEngine.analyzeAndPredict(
             history = periodHistory,

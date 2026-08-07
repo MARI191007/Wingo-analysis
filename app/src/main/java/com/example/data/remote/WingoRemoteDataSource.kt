@@ -197,7 +197,7 @@ class WingoRemoteDataSource {
             "3Min" -> "10002"
             "5Min" -> "10003"
             "10Min" -> "10004"
-            "30s" -> "10000"
+            "30s" -> "10005"
             else -> "10001"
         }
         val formattedIndex = String.format(Locale.US, "%04d", periodIndexToday)

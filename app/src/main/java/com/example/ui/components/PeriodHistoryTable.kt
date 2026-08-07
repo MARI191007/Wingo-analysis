@@ -66,7 +66,17 @@ fun PeriodHistoryTable(
     modifier: Modifier = Modifier
 ) {
     val predictionMap = remember(predictions) {
-        predictions.associateBy { it.targetPeriodId }
+        val map = mutableMapOf<String, PredictionResult>()
+        predictions.forEach { p ->
+            map[p.targetPeriodId] = p
+            val norm = com.example.util.PeriodUtils.normalizePeriodId(p.targetPeriodId, p.gameMode)
+            map[norm] = p
+            val suffix = norm.takeLast(4)
+            if (suffix.length >= 4) {
+                map.putIfAbsent(suffix, p)
+            }
+        }
+        map
     }
 
     var editingPeriodId by remember { mutableStateOf<String?>(null) }
@@ -191,7 +201,7 @@ fun PeriodHistoryTable(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(periods, key = { it.periodId }) { item ->
-                        val prediction = predictionMap[item.periodId]
+                        val prediction = predictionMap[item.periodId] ?: predictionMap[item.periodId.takeLast(4)]
                         PeriodRowItem(
                             period = item,
                             prediction = prediction,

@@ -53,12 +53,14 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
     private var historyCollectJob: Job? = null
     private var lastObservedPeriodId: String = ""
 
+    private var verifiedJob: Job? = null
+
     init {
         viewModelScope.launch {
             repository.initializeDefaultData(_uiState.value.selectedGameMode)
             observeHistory(_uiState.value.selectedGameMode)
             startServerClock()
-            observeVerifiedStats()
+            observeVerifiedStats(_uiState.value.selectedGameMode)
             generateMlPrediction()
         }
     }
@@ -109,6 +111,7 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.initializeDefaultData(mode)
             observeHistory(mode)
+            observeVerifiedStats(mode)
             generateMlPrediction()
         }
     }
@@ -126,7 +129,7 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
         historyCollectJob?.cancel()
         historyCollectJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             repository.getPeriodHistory(mode).collectLatest { history ->
-                val targetPeriod = _uiState.value.serverInfo?.nextPeriodId
+                val targetPeriod = _uiState.value.serverInfo?.currentPeriodId
                 val details = if (history.isNotEmpty()) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                         mlEngine.analyzeAndPredict(history, _uiState.value.selectedAlgorithm, targetPeriod)
@@ -160,9 +163,10 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun observeVerifiedStats() {
-        viewModelScope.launch {
-            repository.getVerifiedPredictions().collectLatest { verifiedList ->
+    private fun observeVerifiedStats(mode: String) {
+        verifiedJob?.cancel()
+        verifiedJob = viewModelScope.launch {
+            repository.getVerifiedPredictions(mode).collectLatest { verifiedList ->
                 val wins = verifiedList.count { it.isWin == true }
                 val total = verifiedList.size
                 val rate = if (total > 0) (wins.toFloat() / total) * 100f else 88.5f
@@ -205,14 +209,10 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
 
 
     private suspend fun onPeriodClosed(closedPeriodId: String, mode: String) {
-        // 1. Ingest closed period result so history dynamically advances for every period
-        val serverDigit = repository.getOnlineServerDigitForPeriod(closedPeriodId, mode)
-        repository.ingestServerPeriodResult(closedPeriodId, serverDigit, mode, isRealVerified = false)
-
-        // 2. Fetch/sync live online period history in background (non-blocking)
+        // Fetch/sync live online period history in background (non-blocking)
         repository.syncOnlinePeriodHistory(mode, _uiState.value.customBasePeriodId, _uiState.value.customSetTimeMs)
 
-        // 3. Automatically generate new ML prediction for the new active period
+        // Automatically generate new ML prediction for the new active period
         if (_uiState.value.autoPredictEnabled) {
             generateMlPrediction()
         }
@@ -235,7 +235,7 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val prediction = repository.runMlPrediction(mode, algo, baseId, setTime)
-            val targetPeriod = prediction?.targetPeriodId ?: _uiState.value.serverInfo?.nextPeriodId
+            val targetPeriod = prediction?.targetPeriodId ?: _uiState.value.serverInfo?.currentPeriodId
             val mlOutput = if (currentHistory.isNotEmpty()) mlEngine.analyzeAndPredict(currentHistory, algo, targetPeriod) else null
 
             val finalPrediction = prediction ?: if (mlOutput != null && targetPeriod != null) {

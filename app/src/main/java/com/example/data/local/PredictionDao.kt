@@ -25,6 +25,12 @@ interface PredictionDao {
     @Query("SELECT * FROM prediction_results WHERE isWin IS NOT NULL ORDER BY timestamp DESC LIMIT 100")
     fun getVerifiedPredictions(): Flow<List<PredictionResult>>
 
+    @Query("SELECT * FROM prediction_results WHERE gameMode = :mode AND isWin IS NOT NULL ORDER BY timestamp DESC LIMIT 100")
+    fun getVerifiedPredictionsForMode(mode: String): Flow<List<PredictionResult>>
+
+    @Query("SELECT * FROM prediction_results")
+    suspend fun getAllPredictionsList(): List<PredictionResult>
+
     @Query("DELETE FROM prediction_results")
     suspend fun clearPredictions()
 }

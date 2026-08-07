@@ -128,7 +128,7 @@ fun HeroPredictionCard(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "NEXT PREDICTION",
+                            text = "LIVE PREDICTION",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = ImmersiveIndigoLight,
@@ -136,7 +136,7 @@ fun HeroPredictionCard(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = serverInfo?.nextPeriodId ?: "20260806100010851",
+                            text = prediction?.targetPeriodId ?: serverInfo?.currentPeriodId ?: "20260806100010850",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = ImmersiveIndigoLight,
@@ -336,7 +336,7 @@ fun HeroPredictionCard(
                     }
                 } else {
                     val activePrediction = prediction ?: run {
-                        val targetId = serverInfo?.nextPeriodId ?: "2026080610001001"
+                        val targetId = serverInfo?.currentPeriodId ?: "2026080610001001"
                         val pLong = targetId.filter { it.isDigit() }.toLongOrNull() ?: 1001L
                         val digit = ((pLong * 31 + 7) % 10).toInt()
                         val secDigit = ((pLong * 17 + 3) % 10).toInt()
@@ -379,7 +379,7 @@ fun HeroPredictionCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "TARGET NEXT PERIOD: #$targetPeriod",
+                                text = "TARGET LIVE PERIOD: #$targetPeriod",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
