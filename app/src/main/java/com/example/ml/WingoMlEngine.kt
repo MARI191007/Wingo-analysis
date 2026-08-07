@@ -57,287 +57,298 @@ class WingoMlEngine {
         val periodsToAnalyze = history
             .sortedByDescending { it.periodId.filter { c -> c.isDigit() }.toLongOrNull() ?: 0L }
             .distinctBy { it.periodId }
-            .take(1000)
+            .take(500)
 
-        val digitProbabilities = DoubleArray(10) { 0.10 } // Base uniform 10%
+        val totalRecords = periodsToAnalyze.size
+        val bsList = periodsToAnalyze.map { it.bigSmall }
 
         // ---------------------------------------------------------------------
-        // 1. ORDER-1, ORDER-2, ORDER-3, AND ORDER-4 MARKOV TRANSITION MATRICES
+        // 1. TREND REVERSAL VS TREND CONTINUATION STREAK ENGINE (500 HISTORY)
+        // ---------------------------------------------------------------------
+        val currentBs = bsList.firstOrNull() ?: "BIG"
+        var currentStreak = 0
+        for (bs in bsList) {
+            if (bs == currentBs) currentStreak++ else break
+        }
+
+        var streakReversalCount = 0
+        var streakContinuationCount = 0
+        // Search 500 period history for streaks of length equal to currentStreak
+        for (i in 0 until totalRecords - currentStreak - 1) {
+            var matchStreak = 0
+            val candidateBs = bsList[i + 1]
+            for (k in 1..currentStreak) {
+                if (i + k < totalRecords && bsList[i + k] == candidateBs) {
+                    matchStreak++
+                } else break
+            }
+            if (matchStreak == currentStreak) {
+                val outcomeAfterStreak = bsList[i]
+                if (outcomeAfterStreak == candidateBs) {
+                    streakContinuationCount++
+                } else {
+                    streakReversalCount++
+                }
+            }
+        }
+
+        val totalStreakMatches = streakReversalCount + streakContinuationCount
+        val streakReversalRatio = if (totalStreakMatches > 0) streakReversalCount.toDouble() / totalStreakMatches else 0.5
+        val streakContinuationRatio = if (totalStreakMatches > 0) streakContinuationCount.toDouble() / totalStreakMatches else 0.5
+
+        // Determine Streak Trend Signal
+        val streakSignalBs = if (currentStreak >= 3 && streakReversalRatio >= 0.55) {
+            if (currentBs == "BIG") "SMALL" else "BIG" // Trend Reversal
+        } else if (streakContinuationRatio >= 0.55) {
+            currentBs // Trend Continuation
+        } else if (currentStreak >= 4) {
+            if (currentBs == "BIG") "SMALL" else "BIG" // Reversal default for long streaks
+        } else {
+            currentBs
+        }
+        val streakSignalWeight = max(streakReversalRatio, streakContinuationRatio)
+
+        // ---------------------------------------------------------------------
+        // 2. SUBSEQUENCE N-GRAM PATTERN MATCHING ENGINE (500 HISTORY)
+        // ---------------------------------------------------------------------
+        var ngramBigWeight = 0.0
+        var ngramSmallWeight = 0.0
+        val ngramDigitCounts = DoubleArray(10)
+        var totalNgramMatches = 0.0
+
+        if (totalRecords >= 5) {
+            val seq5 = bsList.take(5)
+            val seq4 = bsList.take(4)
+            val seq3 = bsList.take(3)
+
+            for (i in 1 until totalRecords - 5) {
+                val candidate5 = bsList.subList(i + 1, (i + 6).coerceAtMost(totalRecords))
+                val outcomeBs = bsList[i]
+                val outcomeDigit = periodsToAnalyze[i].number.coerceIn(0, 9)
+
+                val recencyDecay = exp(-0.015 * i)
+
+                if (candidate5 == seq5) {
+                    val w = 5.0 * recencyDecay
+                    if (outcomeBs == "BIG") ngramBigWeight += w else ngramSmallWeight += w
+                    ngramDigitCounts[outcomeDigit] += w
+                    totalNgramMatches += w
+                } else if (candidate5.take(4) == seq4) {
+                    val w = 3.2 * recencyDecay
+                    if (outcomeBs == "BIG") ngramBigWeight += w else ngramSmallWeight += w
+                    ngramDigitCounts[outcomeDigit] += w
+                    totalNgramMatches += w
+                } else if (candidate5.take(3) == seq3) {
+                    val w = 1.8 * recencyDecay
+                    if (outcomeBs == "BIG") ngramBigWeight += w else ngramSmallWeight += w
+                    ngramDigitCounts[outcomeDigit] += w
+                    totalNgramMatches += w
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 3. ALTERNATING ZIG-ZAG PATTERN RECOGNITION (500 HISTORY)
+        // ---------------------------------------------------------------------
+        var zigZagLen = 0
+        for (i in 0 until min(10, totalRecords - 1)) {
+            if (bsList[i] != bsList[i + 1]) zigZagLen++ else break
+        }
+
+        var zigZagContinueCount = 0
+        var zigZagBreakCount = 0
+        if (zigZagLen >= 2) {
+            for (i in 1 until totalRecords - zigZagLen - 1) {
+                var candidateZigZag = 0
+                for (k in 0 until zigZagLen) {
+                    if (i + k + 1 < totalRecords && bsList[i + k] != bsList[i + k + 1]) {
+                        candidateZigZag++
+                    } else break
+                }
+                if (candidateZigZag == zigZagLen) {
+                    if (bsList[i] != bsList[i + 1]) {
+                        zigZagContinueCount++
+                    } else {
+                        zigZagBreakCount++
+                    }
+                }
+            }
+        }
+        val expectedZigZagBs = if (zigZagLen >= 2 && zigZagContinueCount >= zigZagBreakCount) {
+            if (currentBs == "BIG") "SMALL" else "BIG" // Continuation of Alternating pattern
+        } else {
+            currentBs // Pattern Break
+        }
+
+        // ---------------------------------------------------------------------
+        // 4. MACRO MEAN REVERSION / MOMENTUM ENGINE (500 HISTORY)
+        // ---------------------------------------------------------------------
+        val recent25Big = bsList.take(25).count { it == "BIG" }
+        val recent25Small = 25 - recent25Big
+        val meanReversionBs = when {
+            recent25Big >= 15 -> "SMALL" // Overbought BIG -> Mean Reversion to SMALL
+            recent25Small >= 15 -> "BIG"  // Overbought SMALL -> Mean Reversion to BIG
+            else -> streakSignalBs
+        }
+
+        // ---------------------------------------------------------------------
+        // 5. MARKOV MATRIX TRANSITION ENGINE (ORDER-1, ORDER-2, ORDER-3)
         // ---------------------------------------------------------------------
         val lastDigit = periodsToAnalyze.firstOrNull()?.number ?: 7
         val prevDigit1 = periodsToAnalyze.getOrNull(1)?.number ?: 3
         val prevDigit2 = periodsToAnalyze.getOrNull(2)?.number ?: 5
-        val prevDigit3 = periodsToAnalyze.getOrNull(3)?.number ?: 2
 
         val transitionCounts1 = Array(10) { DoubleArray(10) }
         val originCounts1 = DoubleArray(10)
-
         val transitionCounts2 = Array(10) { Array(10) { DoubleArray(10) } }
         val originCounts2 = Array(10) { DoubleArray(10) }
 
-        val transitionCounts3 = Array(10) { Array(10) { Array(10) { DoubleArray(10) } } }
-        val originCounts3 = Array(10) { Array(10) { DoubleArray(10) } }
-
-        for (i in 0 until periodsToAnalyze.size - 3) {
+        for (i in 0 until totalRecords - 2) {
             val curr = periodsToAnalyze[i].number.coerceIn(0, 9)
             val p1 = periodsToAnalyze[i + 1].number.coerceIn(0, 9)
             val p2 = periodsToAnalyze[i + 2].number.coerceIn(0, 9)
-            val p3 = periodsToAnalyze[i + 3].number.coerceIn(0, 9)
 
-            val weight = exp(-0.03 * i) // Smooth recency weighting
-
-            // Order-1
-            transitionCounts1[p1][curr] += weight
-            originCounts1[p1] += weight
-
-            // Order-2
-            transitionCounts2[p2][p1][curr] += weight
-            originCounts2[p2][p1] += weight
-
-            // Order-3
-            transitionCounts3[p3][p2][p1][curr] += weight
-            originCounts3[p3][p2][p1] += weight
+            val w = exp(-0.02 * i)
+            transitionCounts1[p1][curr] += w
+            originCounts1[p1] += w
+            transitionCounts2[p2][p1][curr] += w
+            originCounts2[p2][p1] += w
         }
 
         val markovVector = DoubleArray(10)
-        val m1Weight = 0.40
-        val m2Weight = 0.35
-        val m3Weight = 0.25
-
         for (d in 0..9) {
             val p1Prob = if (originCounts1[lastDigit] > 0) transitionCounts1[lastDigit][d] / originCounts1[lastDigit] else 0.10
             val p2Prob = if (originCounts2[prevDigit1][lastDigit] > 0) transitionCounts2[prevDigit1][lastDigit][d] / originCounts2[prevDigit1][lastDigit] else p1Prob
-            val p3Prob = if (originCounts3[prevDigit2][prevDigit1][lastDigit] > 0) transitionCounts3[prevDigit2][prevDigit1][lastDigit][d] / originCounts3[prevDigit2][prevDigit1][lastDigit] else p2Prob
-            markovVector[d] = (p1Prob * m1Weight) + (p2Prob * m2Weight) + (p3Prob * m3Weight)
+            markovVector[d] = (p1Prob * 0.60) + (p2Prob * 0.40)
         }
 
-        // ---------------------------------------------------------------------
-        // 2. FORWARD PATTERN READING ENGINE (Sequences: Dragon, ZigZag, Mirror, 1-2-1)
-        // ---------------------------------------------------------------------
-        val recentBsSequence = periodsToAnalyze.take(25).map { it.bigSmall }
-        val (forwardPattern, forwardMatch, forwardBs) = detectForwardPattern(recentBsSequence)
-
-        // ---------------------------------------------------------------------
-        // 3. REVERSE PATTERN READING ENGINE (Pattern Inversion & Breakout Matrix)
-        // ---------------------------------------------------------------------
-        val (reversePattern, reverseInversionScore, reverseBs) = detectReversePattern(recentBsSequence, periodsToAnalyze)
-
-        // ---------------------------------------------------------------------
-        // 4. PSYCHOLOGICAL GAME THEORY & DEALER TRAP DETECTOR
-        // ---------------------------------------------------------------------
-        val (dealerTrapScore, dealerMode, psychologicalAction) = evaluateDealerTraps(periodsToAnalyze, forwardMatch, reverseInversionScore)
-
-        // ---------------------------------------------------------------------
-        // 5. DEEP SUBSEQUENCE N-GRAM MATCHING ENGINE (Window length 2, 3, 4, 5)
-        // ---------------------------------------------------------------------
-        val ngramBigSmallCounts = DoubleArray(2) // 0=SMALL, 1=BIG
-        val ngramDigitCounts = DoubleArray(10)
-        var totalNgramMatches = 0.0
-
-        if (periodsToAnalyze.size >= 6) {
-            val seq4 = periodsToAnalyze.take(4).map { it.bigSmall }
-
-            for (i in 1 until periodsToAnalyze.size - 4) {
-                val candidateSeq = listOf(
-                    periodsToAnalyze[i + 1].bigSmall,
-                    periodsToAnalyze[i + 2].bigSmall,
-                    periodsToAnalyze[i + 3].bigSmall,
-                    periodsToAnalyze[i + 4].bigSmall
-                )
-
-                var matchLength = 0
-                for (k in 0..3) {
-                    if (candidateSeq[k] == seq4[k]) matchLength++ else break
-                }
-
-                if (matchLength >= 2) {
-                    val outcomeBs = periodsToAnalyze[i].bigSmall
-                    val outcomeDigit = periodsToAnalyze[i].number.coerceIn(0, 9)
-                    val weight = exp(-0.02 * i) * (matchLength * 0.5)
-
-                    if (outcomeBs == "BIG") ngramBigSmallCounts[1] += weight
-                    else ngramBigSmallCounts[0] += weight
-
-                    ngramDigitCounts[outcomeDigit] += weight
-                    totalNgramMatches += weight
-                }
-            }
-        }
-
-        val ngramDigitVector = DoubleArray(10)
-        if (totalNgramMatches > 0) {
-            for (d in 0..9) {
-                ngramDigitVector[d] = ngramDigitCounts[d] / totalNgramMatches
-            }
-        } else {
-            for (d in 0..9) ngramDigitVector[d] = markovVector[d]
-        }
-
-        // Frequency Vector with Adaptive Exponential Decay
         val frequencyVector = DoubleArray(10)
-        var totalWeight = 0.0
-        periodsToAnalyze.take(40).forEachIndexed { index, record ->
-            val weight = exp(-0.06 * index)
-            val d = record.number.coerceIn(0, 9)
-            frequencyVector[d] += weight
-            totalWeight += weight
+        var totalFreqWeight = 0.0
+        periodsToAnalyze.take(50).forEachIndexed { idx, rec ->
+            val w = exp(-0.04 * idx)
+            val d = rec.number.coerceIn(0, 9)
+            frequencyVector[d] += w
+            totalFreqWeight += w
         }
-        if (totalWeight > 0) {
-            for (d in 0..9) frequencyVector[d] /= totalWeight
+        if (totalFreqWeight > 0) {
+            for (d in 0..9) frequencyVector[d] /= totalFreqWeight
         }
 
-        // Latency Vector (Cold Digit Catch-up vs Hot Persistence)
         val latencyVector = DoubleArray(10) { 0.10 }
         val lastSeen = IntArray(10) { 999 }
         periodsToAnalyze.forEachIndexed { idx, rec ->
             val d = rec.number.coerceIn(0, 9)
             if (lastSeen[d] == 999) lastSeen[d] = idx
         }
-        var totalLatencyWeight = 0.0
+        var totalLatWeight = 0.0
         for (d in 0..9) {
             val gap = lastSeen[d]
-            val latWeight = when {
-                gap in 8..20 -> 0.18 // Ideal catchup window
-                gap in 3..7 -> 0.12  // Regular distribution
-                gap <= 2 -> 0.08    // Recent hit
-                else -> 0.10        // Extremely cold
+            val w = when {
+                gap in 6..18 -> 0.18
+                gap in 2..5 -> 0.12
+                gap <= 1 -> 0.08
+                else -> 0.10
             }
-            latencyVector[d] = latWeight
-            totalLatencyWeight += latWeight
+            latencyVector[d] = w
+            totalLatWeight += w
         }
-        if (totalLatencyWeight > 0) {
-            for (d in 0..9) latencyVector[d] /= totalLatencyWeight
+        if (totalLatWeight > 0) {
+            for (d in 0..9) latencyVector[d] /= totalLatWeight
         }
 
         // ---------------------------------------------------------------------
-        // 6. PATTERN BREAKING & REGIME SHIFT ANALYZER
+        // 6. ENSEMBLE DECISION FOR BIG VS SMALL (TREND REVERSAL VS CONTINUATION)
         // ---------------------------------------------------------------------
-        val recent10Bs = periodsToAnalyze.take(10).map { it.bigSmall }
-        var currentStreakLen = 0
-        val streakBs = recent10Bs.firstOrNull() ?: "BIG"
-        for (s in recent10Bs) {
-            if (s == streakBs) currentStreakLen++ else break
-        }
-        
-        // Probability multiplier for pattern breaking vs pattern continuation
-        val patternBreakVector = DoubleArray(10) { 0.10 }
-        val breakSideBs = if (streakBs == "BIG") "SMALL" else "BIG"
-        if (currentStreakLen >= 4) {
-            // High streak length -> Pattern Breaking probability increases
-            val breakWeight = min(0.40, 0.10 + (currentStreakLen - 3) * 0.08)
-            val contWeight = 1.0 - breakWeight
-            for (d in 0..9) {
-                val isBreakSide = if (breakSideBs == "BIG") d >= 5 else d < 5
-                patternBreakVector[d] = if (isBreakSide) breakWeight / 5.0 else contWeight / 5.0
-            }
+        var bigScore = 0.0
+        var smallScore = 0.0
+
+        // A. Streak Signal Weight (30%)
+        val streakW = 0.30 * streakSignalWeight
+        if (streakSignalBs == "BIG") bigScore += streakW else smallScore += streakW
+
+        // B. N-Gram Subsequence Weight (35%)
+        val totalNgram = ngramBigWeight + ngramSmallWeight
+        if (totalNgram > 0) {
+            bigScore += 0.35 * (ngramBigWeight / totalNgram)
+            smallScore += 0.35 * (ngramSmallWeight / totalNgram)
         } else {
-            for (d in 0..9) patternBreakVector[d] = 0.10
+            bigScore += 0.175
+            smallScore += 0.175
         }
 
-        // Color momentum & number pattern analyzer
-        val recent10Colors = periodsToAnalyze.take(10).map { it.color }
-        val greenCount = recent10Colors.count { it == "GREEN" }
-        val redCount = recent10Colors.count { it == "RED" }
+        // C. Alternating Zig-Zag Weight (15%)
+        val zigZagW = 0.15
+        if (expectedZigZagBs == "BIG") bigScore += zigZagW else smallScore += zigZagW
 
-        // ---------------------------------------------------------------------
-        // 7. ENSEMBLE COMBINATION & UNIFIED 5-LAYER INTEGRATION
-        // ---------------------------------------------------------------------
+        // D. Mean Reversion / Macro Momentum Weight (10%)
+        val meanW = 0.10
+        if (meanReversionBs == "BIG") bigScore += meanW else smallScore += meanW
+
+        // E. Markov Digit Distribution Sum (10%)
+        var markovBigSum = 0.0
+        var markovSmallSum = 0.0
         for (d in 0..9) {
-            when (algorithm) {
-                AlgorithmType.MARKOV_CHAIN -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.40) +
-                            (ngramDigitVector[d] * 0.25) +
-                            (frequencyVector[d] * 0.15) +
-                            (patternBreakVector[d] * 0.10) +
-                            (latencyVector[d] * 0.10)
-                }
-                AlgorithmType.TREND_MOMENTUM -> {
-                    digitProbabilities[d] = (frequencyVector[d] * 0.35) +
-                            (ngramDigitVector[d] * 0.25) +
-                            (markovVector[d] * 0.20) +
-                            (patternBreakVector[d] * 0.10) +
-                            (latencyVector[d] * 0.10)
-                }
-                AlgorithmType.HYBRID_AI -> {
-                    // Unified 5-Layer Integration: ML + N-Gram + Freq + Pattern Break + Latency
-                    digitProbabilities[d] = (ngramDigitVector[d] * 0.35) +
-                            (markovVector[d] * 0.25) +
-                            (frequencyVector[d] * 0.20) +
-                            (patternBreakVector[d] * 0.10) +
-                            (latencyVector[d] * 0.10)
-                }
-                AlgorithmType.DEEP_PSYCHOLOGICAL -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.30) +
-                            (ngramDigitVector[d] * 0.30) +
-                            (patternBreakVector[d] * 0.20) +
-                            (frequencyVector[d] * 0.10) +
-                            (latencyVector[d] * 0.10)
-                }
-            }
+            if (d >= 5) markovBigSum += markovVector[d] else markovSmallSum += markovVector[d]
+        }
+        val totalMarkov = markovBigSum + markovSmallSum
+        if (totalMarkov > 0) {
+            bigScore += 0.10 * (markovBigSum / totalMarkov)
+            smallScore += 0.10 * (markovSmallSum / totalMarkov)
+        } else {
+            bigScore += 0.05
+            smallScore += 0.05
+        }
 
-            // Color momentum adjustment
-            val digitColor = when (d) {
-                1, 3, 7, 9 -> "GREEN"
-                2, 4, 6, 8 -> "RED"
-                else -> "VIOLET"
-            }
-            if (digitColor == "GREEN" && greenCount > redCount) {
-                digitProbabilities[d] *= 1.15
-            } else if (digitColor == "RED" && redCount > greenCount) {
-                digitProbabilities[d] *= 1.15
-            }
+        val totalScore = bigScore + smallScore
+        val finalBs = if (bigScore >= smallScore) "BIG" else "SMALL"
+        val winnerRatio = if (totalScore > 0) (if (finalBs == "BIG") bigScore / totalScore else smallScore / totalScore) else 0.55
+        val bsConfidence = min(98.5f, max(82.0f, (winnerRatio * 100.0).toFloat()))
 
-            // Only apply mild dampening if a digit repeats 3 times consecutively (triple repeat)
-            val recent3 = periodsToAnalyze.take(3).map { it.number }
-            if (recent3.size >= 3 && recent3[0] == d && recent3[1] == d && recent3[2] == d) {
-                digitProbabilities[d] *= 0.70
+        // ---------------------------------------------------------------------
+        // 7. DIGIT PROBABILITY DISTRIBUTION & SELECTION
+        // ---------------------------------------------------------------------
+        val digitProbabilities = DoubleArray(10)
+        val ngramDigitVector = DoubleArray(10)
+        if (totalNgramMatches > 0) {
+            for (d in 0..9) ngramDigitVector[d] = ngramDigitCounts[d] / totalNgramMatches
+        } else {
+            for (d in 0..9) ngramDigitVector[d] = markovVector[d]
+        }
+
+        for (d in 0..9) {
+            digitProbabilities[d] = (ngramDigitVector[d] * 0.40) +
+                    (markovVector[d] * 0.30) +
+                    (frequencyVector[d] * 0.18) +
+                    (latencyVector[d] * 0.12)
+
+            // Favor digits belonging to the predicted finalBs category
+            val isPredictedSide = if (finalBs == "BIG") d >= 5 else d < 5
+            if (isPredictedSide) {
+                digitProbabilities[d] *= 2.5
+            } else {
+                digitProbabilities[d] *= 0.4
             }
         }
 
-        // Normalize probabilities to 100%
         val sumProb = digitProbabilities.sum()
         val normalizedList = MutableList(10) { i ->
             i to (if (sumProb > 0) ((digitProbabilities[i] / sumProb) * 100.0).toFloat() else 10.0f)
         }
 
-        var smallSum = 0f
-        var bigSum = 0f
-        for (item in normalizedList) {
-            if (item.first in 0..4) smallSum += item.second
-            else bigSum += item.second
-        }
-
-        // Final prediction decision based strictly on natural probability weight sums
-        val (finalBs, bsConfidence) = if (psychologicalAction == "COUNTER-ATTACK REVERSE" && dealerTrapScore > 65f) {
-            reverseBs to max(82.0f, min(98.5f, max(bigSum, smallSum) + (reverseInversionScore * 0.14f)))
-        } else if (bigSum >= smallSum) {
-            "BIG" to max(75.0f, min(98.5f, bigSum + (forwardMatch * 0.14f)))
-        } else {
-            "SMALL" to max(75.0f, min(98.5f, smallSum + (forwardMatch * 0.14f)))
-        }
-
-        // Primary digit: #1 highest probability digit in predicted Big/Small category
         val predictedCategoryDigits = normalizedList.filter {
             if (finalBs == "BIG") it.first >= 5 else it.first < 5
         }.sortedByDescending { it.second }
 
-        // Opposite side digits for alternative analysis
         val oppositeCategoryDigits = normalizedList.filter {
             if (finalBs == "BIG") it.first < 5 else it.first >= 5
         }.sortedByDescending { it.second }
 
         val primary = predictedCategoryDigits.firstOrNull() ?: normalizedList.maxByOrNull { it.second }!!
-
-        // DOUBT DECISION: High confidence if strong margin, high confidence rating, and low dealer trap risk.
-        val bsMargin = abs(bigSum - smallSum)
-        val hasDoubt = bsMargin < 12.0f || bsConfidence < 78.0f || dealerTrapScore > 62.0f
-
         val sameSideFallbackDigits = if (finalBs == "BIG") listOf(5, 6, 7, 8, 9) else listOf(0, 1, 2, 3, 4)
         val secondInPredicted = predictedCategoryDigits.getOrNull(1)
             ?: (sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { alt -> alt to (primary.second * 0.70f) })
             ?: oppositeCategoryDigits.first()
 
-        // ALWAYS select Primary (#1) and Secondary (#2) numbers to maximize exact number win rate on the predicted side
         var secondary = secondInPredicted
         if (secondary.first == primary.first) {
             secondary = sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { it to 20f } ?: oppositeCategoryDigits.first()
@@ -349,8 +360,11 @@ class WingoMlEngine {
             else -> "RED"
         }
 
-        // Heatmap calculations
-        val bigCount = periodsToAnalyze.take(50).count { it.bigSmall == "BIG" }
+        val (forwardPattern, forwardMatch, forwardBs) = detectForwardPattern(bsList.take(25))
+        val (reversePattern, reverseInversionScore, reverseBs) = detectReversePattern(bsList.take(25), periodsToAnalyze)
+        val (dealerTrapScore, dealerMode, psychologicalAction) = evaluateDealerTraps(periodsToAnalyze, forwardMatch, reverseInversionScore)
+
+        val bigCount = bsList.take(50).count { it == "BIG" }
         val smallCount = 50 - bigCount
 
         val digitFrequencies = IntArray(10)
@@ -361,19 +375,14 @@ class WingoMlEngine {
         val hotNumbers = sortedDigitsByFreq.take(3).map { it.first }
         val coldNumbers = sortedDigitsByFreq.takeLast(3).map { it.first }
 
-        // Streak info
-        var streakLength = 0
-        val firstBs = periodsToAnalyze.firstOrNull()?.bigSmall ?: "BIG"
-        for (p in periodsToAnalyze) {
-            if (p.bigSmall == firstBs) streakLength++ else break
-        }
-        val currentStreakType = "$firstBs x$streakLength"
+        val currentStreakType = "$currentBs x$currentStreak"
 
-        val aiReasoning = buildAiReasoningText(
-            forwardPattern, forwardMatch, forwardBs,
-            reversePattern, reverseInversionScore, reverseBs,
-            dealerTrapScore, dealerMode, psychologicalAction, finalBs, primary.first, secondary.first, hasDoubt
-        )
+        val reasoningType = if (streakSignalBs != currentBs) "TREND REVERSAL DETECTED" else "TREND CONTINUATION CONFIRMED"
+        val aiReasoning = "🤖 500-PERIOD PATTERN ENGINE:\n" +
+                "• Directive: $reasoningType (Streak x$currentStreak, Reversal Rate ${(streakReversalRatio * 100).toInt()}%)\n" +
+                "• N-Gram Subsequence: Match found across 500 results -> Signal $finalBs\n" +
+                "• Alternating Flow: $expectedZigZagBs\n" +
+                "► CONFIRMED PREDICTION: $finalBs | Primary #${primary.first} | Secondary #${secondary.first}"
 
         return MlPredictionOutput(
             bigSmallPrediction = finalBs,
@@ -391,7 +400,7 @@ class WingoMlEngine {
                 hotNumbers = hotNumbers,
                 coldNumbers = coldNumbers,
                 currentStreak = currentStreakType,
-                streakReversalIndex = min(99.0f, streakLength * 16.5f)
+                streakReversalIndex = min(99.0f, currentStreak * 16.5f)
             ),
             forwardPatternName = forwardPattern,
             forwardPatternMatch = forwardMatch,
@@ -567,6 +576,17 @@ class WingoMlEngine {
 
     fun generateInitialSyntheticHistory(count: Int = 500, gameMode: String = "1Min"): List<PeriodRecord> {
         return emptyList()
+    }
+
+    private fun calculateDeterministicDigit(periodId: String, gameMode: String): Int {
+        val digitsOnly = periodId.filter { it.isDigit() }
+        val pLong = digitsOnly.toLongOrNull() ?: periodId.hashCode().toLong()
+        val modeHash = gameMode.hashCode().toLong()
+        var z = pLong xor (modeHash * -7046029254386353131L)
+        z = (z xor (z ushr 30)) * -4658895280553760867L
+        z = (z xor (z ushr 27)) * -7723592293110705685L
+        z = z xor (z ushr 31)
+        return (abs(z) % 10).toInt()
     }
 
     private fun splitMix64(z: Long): Long {

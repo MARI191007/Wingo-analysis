@@ -73,7 +73,9 @@ fun PeriodHistoryTable(
             map[norm] = p
             val suffix = norm.takeLast(4)
             if (suffix.length >= 4) {
-                map.putIfAbsent(suffix, p)
+                if (!map.containsKey(suffix)) {
+                    map[suffix] = p
+                }
             }
         }
         map
