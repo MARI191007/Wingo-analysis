@@ -210,33 +210,63 @@ class WingoMlEngine {
         }
 
         // ---------------------------------------------------------------------
-        // 6. ENSEMBLE COMBINATION & DYNAMIC PATTERN WEIGHTING
+        // 6. PATTERN BREAKING & REGIME SHIFT ANALYZER
+        // ---------------------------------------------------------------------
+        val recent10Bs = periodsToAnalyze.take(10).map { it.bigSmall }
+        var currentStreakLen = 0
+        val streakBs = recent10Bs.firstOrNull() ?: "BIG"
+        for (s in recent10Bs) {
+            if (s == streakBs) currentStreakLen++ else break
+        }
+        
+        // Probability multiplier for pattern breaking vs pattern continuation
+        val patternBreakVector = DoubleArray(10) { 0.10 }
+        val breakSideBs = if (streakBs == "BIG") "SMALL" else "BIG"
+        if (currentStreakLen >= 4) {
+            // High streak length -> Pattern Breaking probability increases
+            val breakWeight = min(0.40, 0.10 + (currentStreakLen - 3) * 0.08)
+            val contWeight = 1.0 - breakWeight
+            for (d in 0..9) {
+                val isBreakSide = if (breakSideBs == "BIG") d >= 5 else d < 5
+                patternBreakVector[d] = if (isBreakSide) breakWeight / 5.0 else contWeight / 5.0
+            }
+        } else {
+            for (d in 0..9) patternBreakVector[d] = 0.10
+        }
+
+        // ---------------------------------------------------------------------
+        // 7. ENSEMBLE COMBINATION & UNIFIED 5-LAYER INTEGRATION
         // ---------------------------------------------------------------------
         for (d in 0..9) {
             when (algorithm) {
                 AlgorithmType.MARKOV_CHAIN -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.45) +
-                            (ngramDigitVector[d] * 0.30) +
+                    digitProbabilities[d] = (markovVector[d] * 0.40) +
+                            (ngramDigitVector[d] * 0.25) +
                             (frequencyVector[d] * 0.15) +
+                            (patternBreakVector[d] * 0.10) +
                             (latencyVector[d] * 0.10)
                 }
                 AlgorithmType.TREND_MOMENTUM -> {
-                    digitProbabilities[d] = (frequencyVector[d] * 0.40) +
-                            (ngramDigitVector[d] * 0.30) +
+                    digitProbabilities[d] = (frequencyVector[d] * 0.35) +
+                            (ngramDigitVector[d] * 0.25) +
                             (markovVector[d] * 0.20) +
+                            (patternBreakVector[d] * 0.10) +
                             (latencyVector[d] * 0.10)
                 }
                 AlgorithmType.HYBRID_AI -> {
-                    digitProbabilities[d] = (ngramDigitVector[d] * 0.40) +
-                            (markovVector[d] * 0.30) +
+                    // Unified 5-Layer Integration: ML + N-Gram + Freq + Pattern Break + Latency
+                    digitProbabilities[d] = (ngramDigitVector[d] * 0.35) +
+                            (markovVector[d] * 0.25) +
                             (frequencyVector[d] * 0.20) +
+                            (patternBreakVector[d] * 0.10) +
                             (latencyVector[d] * 0.10)
                 }
                 AlgorithmType.DEEP_PSYCHOLOGICAL -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.35) +
-                            (ngramDigitVector[d] * 0.35) +
-                            (frequencyVector[d] * 0.15) +
-                            (latencyVector[d] * 0.15)
+                    digitProbabilities[d] = (markovVector[d] * 0.30) +
+                            (ngramDigitVector[d] * 0.30) +
+                            (patternBreakVector[d] * 0.20) +
+                            (frequencyVector[d] * 0.10) +
+                            (latencyVector[d] * 0.10)
                 }
             }
 
@@ -264,11 +294,11 @@ class WingoMlEngine {
 
         // Final prediction decision based strictly on natural probability weight sums
         val (finalBs, bsConfidence) = if (psychologicalAction == "COUNTER-ATTACK REVERSE" && dealerTrapScore > 65f) {
-            reverseBs to max(80.0f, min(97.5f, max(bigSum, smallSum) + (reverseInversionScore * 0.12f)))
+            reverseBs to max(82.0f, min(98.5f, max(bigSum, smallSum) + (reverseInversionScore * 0.14f)))
         } else if (bigSum >= smallSum) {
-            "BIG" to max(72.0f, min(97.5f, bigSum + (forwardMatch * 0.12f)))
+            "BIG" to max(75.0f, min(98.5f, bigSum + (forwardMatch * 0.14f)))
         } else {
-            "SMALL" to max(72.0f, min(97.5f, smallSum + (forwardMatch * 0.12f)))
+            "SMALL" to max(75.0f, min(98.5f, smallSum + (forwardMatch * 0.14f)))
         }
 
         // Primary digit: Highest probability digit in predicted Big/Small category
@@ -283,22 +313,26 @@ class WingoMlEngine {
 
         val primary = predictedCategoryDigits.firstOrNull() ?: normalizedList.maxByOrNull { it.second }!!
 
-        // Check if there is doubt between BIG and SMALL (balanced sum, lower confidence, or dealer trap risk)
+        // DOUBT DECISION: High confidence if strong margin, high confidence rating, and low dealer trap risk.
         val bsMargin = abs(bigSum - smallSum)
-        val hasDoubt = bsMargin < 22.0f || bsConfidence < 88.0f || dealerTrapScore > 48.0f
+        val hasDoubt = bsMargin < 12.0f || bsConfidence < 78.0f || dealerTrapScore > 62.0f
 
-        val topOpposite = oppositeCategoryDigits.firstOrNull() ?: (if (finalBs == "BIG") (3 to 22f) else (7 to 22f))
+        val topOpposite = oppositeCategoryDigits.firstOrNull() ?: (if (finalBs == "BIG") (3 to 20f) else (7 to 20f))
+        val sameSideFallbackDigits = if (finalBs == "BIG") listOf(5, 6, 7, 8, 9) else listOf(0, 1, 2, 3, 4)
         val secondInPredicted = predictedCategoryDigits.getOrNull(1)
+            ?: (sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { alt -> alt to (primary.second * 0.70f) })
+            ?: topOpposite
 
-        // When in doubt or for risk hedging, secondary number is selected from the OPPOSITE side
+        // IF HIGH CONFIDENCE (!hasDoubt): Both numbers are on the predicted Big/Small side (e.g. BIG -> 8 & 6).
+        // IF LOW CONFIDENCE / IN DOUBT (hasDoubt): Secondary number is a backup cover from the OPPOSITE side (e.g. BIG -> 8 & 3).
         var secondary = if (hasDoubt) {
             topOpposite
         } else {
-            if (topOpposite.second >= 12.0f) topOpposite else (secondInPredicted ?: topOpposite)
+            secondInPredicted
         }
 
         if (secondary.first == primary.first) {
-            secondary = topOpposite
+            secondary = if (hasDoubt) topOpposite else (sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { it to 20f } ?: topOpposite)
         }
 
         val predictedColor = when (primary.first) {

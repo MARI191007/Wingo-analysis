@@ -86,7 +86,9 @@ fun BottomNav(
                         text = tab.title,
                         fontSize = 9.sp,
                         fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                        color = tint
+                        color = tint,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

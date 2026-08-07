@@ -103,12 +103,13 @@ fun HeroPredictionCard(
             colors = CardDefaults.cardColors(containerColor = ImmersiveSurface)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
+                // Row 1: Running period ID & Timer
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "CURRENT RUNNING",
                             fontSize = 10.sp,
@@ -119,30 +120,17 @@ fun HeroPredictionCard(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = serverInfo?.currentPeriodId ?: "20260806100010850",
-                            fontSize = 15.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             letterSpacing = 0.5.sp
                         )
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "LIVE PREDICTION",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ImmersiveIndigoLight,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = prediction?.targetPeriodId ?: serverInfo?.currentPeriodId ?: "20260806100010850",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ImmersiveIndigoLight,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(12.dp))
 
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
@@ -160,7 +148,39 @@ fun HeroPredictionCard(
                             text = String.format(Locale.US, "%02d:%02d", minutes, seconds),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = LiveGreen
+                            color = LiveGreen,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 2: Target Period Badge
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = ImmersiveIndigoLight.copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, ImmersiveIndigoLight.copy(alpha = 0.30f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "LIVE PREDICTION TARGET: ",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = "#${prediction?.targetPeriodId ?: serverInfo?.currentPeriodId ?: "20260806100010850"}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ImmersiveIndigoLight,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -210,6 +230,8 @@ fun HeroPredictionCard(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = NeonGold,
+                            maxLines = 1,
+                            softWrap = false,
                             letterSpacing = 0.5.sp
                         )
                     }
@@ -249,17 +271,23 @@ fun HeroPredictionCard(
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            text = "CONFIDENCE: ${String.format(Locale.US, "%.1f", prediction?.bigSmallConfidence ?: 88.5f)}% (500 PERIODS)",
+                            text = "CONFIDENCE: ${String.format(Locale.US, "%.1f", prediction?.bigSmallConfidence ?: 88.5f)}%",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            letterSpacing = 1.sp
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            letterSpacing = 0.5.sp
                         )
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Box {
                         Surface(
@@ -267,10 +295,11 @@ fun HeroPredictionCard(
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable { dropdownExpanded = true }
                                 .testTag("algorithm_selector"),
-                            color = Color.White.copy(alpha = 0.15f)
+                            color = Color.White.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
@@ -281,10 +310,12 @@ fun HeroPredictionCard(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = selectedAlgorithm.displayName.take(12),
+                                    text = selectedAlgorithm.displayName,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -471,8 +502,11 @@ fun HeroPredictionCard(
                                 }
                             }
                             Spacer(modifier = Modifier.height(6.dp))
+                            val isOppositeBackup = (activePrediction.primaryNumber >= 5 && activePrediction.secondaryNumber < 5) ||
+                                    (activePrediction.primaryNumber < 5 && activePrediction.secondaryNumber >= 5)
+                            val secondaryLabel = if (isOppositeBackup) "BACKUP HEDGE" else "SECONDARY"
                             Text(
-                                text = "BACKUP HEDGE (${String.format(Locale.US, "%.0f", activePrediction.secondaryProbability)}%)",
+                                text = "$secondaryLabel (${String.format(Locale.US, "%.0f", activePrediction.secondaryProbability)}%)",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White.copy(alpha = 0.9f),
