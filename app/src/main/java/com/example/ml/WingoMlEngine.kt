@@ -279,24 +279,24 @@ class WingoMlEngine {
         var bigScore = 0.0
         var smallScore = 0.0
 
-        // A. Target Period Synchronization Signal (40% Weight when available)
+        // A. Target Period Synchronization Signal (50% Weight when available)
         if (targetBs != null) {
-            val targetW = 0.40
+            val targetW = 0.50
             if (targetBs == "BIG") bigScore += targetW else smallScore += targetW
         }
 
-        // B. Streak Signal Weight (20%)
-        val streakW = 0.20 * streakSignalWeight
+        // B. Streak Signal Weight (15%)
+        val streakW = 0.15 * streakSignalWeight
         if (streakSignalBs == "BIG") bigScore += streakW else smallScore += streakW
 
-        // C. N-Gram Subsequence Weight (20%)
+        // C. N-Gram Subsequence Weight (15%)
         val totalNgram = ngramBigWeight + ngramSmallWeight
         if (totalNgram > 0) {
-            bigScore += 0.20 * (ngramBigWeight / totalNgram)
-            smallScore += 0.20 * (ngramSmallWeight / totalNgram)
+            bigScore += 0.15 * (ngramBigWeight / totalNgram)
+            smallScore += 0.15 * (ngramSmallWeight / totalNgram)
         } else {
-            bigScore += 0.10
-            smallScore += 0.10
+            bigScore += 0.075
+            smallScore += 0.075
         }
 
         // D. Alternating Zig-Zag Weight (10%)
@@ -327,8 +327,8 @@ class WingoMlEngine {
         val bsMargin = abs(bigScore - smallScore)
         val bsConfidence = min(98.5f, max(82.0f, (winnerRatio * 100.0).toFloat()))
 
-        // Confidence determination
-        val hasDoubt = winnerRatio < 0.65 || bsMargin < 0.20 || bsConfidence < 85.0f
+        // Confidence determination (Doubt triggers opposite backup number)
+        val hasDoubt = winnerRatio < 0.65 || bsMargin < 0.20 || bsConfidence < 86.0f || currentStreak >= 4
 
         // ---------------------------------------------------------------------
         // 7. DIGIT PROBABILITY DISTRIBUTION & SELECTION
@@ -347,17 +347,17 @@ class WingoMlEngine {
                     (frequencyVector[d] * 0.18) +
                     (latencyVector[d] * 0.12)
 
-            // Direct boost if digit matches targetDigit
+            // Direct boost if digit matches targetDigit for period synchronization
             if (targetDigit != null && d == targetDigit) {
-                digitProbabilities[d] *= 4.0
+                digitProbabilities[d] *= 8.0
             }
 
             // Favor digits belonging to the predicted finalBs category
             val isPredictedSide = if (finalBs == "BIG") d >= 5 else d < 5
             if (isPredictedSide) {
-                digitProbabilities[d] *= 2.5
+                digitProbabilities[d] *= 3.0
             } else {
-                digitProbabilities[d] *= 0.3
+                digitProbabilities[d] *= 0.25
             }
         }
 
