@@ -54,15 +54,20 @@ class WingoMlEngine {
         targetPeriodId: String? = null
     ): MlPredictionOutput? {
         if (history.isEmpty()) return null
-        val periodsToAnalyze = history.take(500)
+        val periodsToAnalyze = history
+            .sortedByDescending { it.periodId.filter { c -> c.isDigit() }.toLongOrNull() ?: 0L }
+            .distinctBy { it.periodId }
+            .take(500)
 
         val digitProbabilities = DoubleArray(10) { 0.10 } // Base uniform 10%
 
         // ---------------------------------------------------------------------
-        // 1. ORDER-1, ORDER-2, AND ORDER-3 MARKOV TRANSITION MATRICES
+        // 1. ORDER-1, ORDER-2, ORDER-3, AND ORDER-4 MARKOV TRANSITION MATRICES
         // ---------------------------------------------------------------------
         val lastDigit = periodsToAnalyze.firstOrNull()?.number ?: 7
-        val prevDigit = periodsToAnalyze.getOrNull(1)?.number ?: 3
+        val prevDigit1 = periodsToAnalyze.getOrNull(1)?.number ?: 3
+        val prevDigit2 = periodsToAnalyze.getOrNull(2)?.number ?: 5
+        val prevDigit3 = periodsToAnalyze.getOrNull(3)?.number ?: 2
 
         val transitionCounts1 = Array(10) { DoubleArray(10) }
         val originCounts1 = DoubleArray(10)
@@ -70,12 +75,16 @@ class WingoMlEngine {
         val transitionCounts2 = Array(10) { Array(10) { DoubleArray(10) } }
         val originCounts2 = Array(10) { DoubleArray(10) }
 
-        for (i in 0 until periodsToAnalyze.size - 2) {
+        val transitionCounts3 = Array(10) { Array(10) { Array(10) { DoubleArray(10) } } }
+        val originCounts3 = Array(10) { Array(10) { DoubleArray(10) } }
+
+        for (i in 0 until periodsToAnalyze.size - 3) {
             val curr = periodsToAnalyze[i].number.coerceIn(0, 9)
             val p1 = periodsToAnalyze[i + 1].number.coerceIn(0, 9)
             val p2 = periodsToAnalyze[i + 2].number.coerceIn(0, 9)
+            val p3 = periodsToAnalyze[i + 3].number.coerceIn(0, 9)
 
-            val weight = exp(-0.05 * i) // Recency weighting
+            val weight = exp(-0.03 * i) // Smooth recency weighting
 
             // Order-1
             transitionCounts1[p1][curr] += weight
@@ -84,22 +93,28 @@ class WingoMlEngine {
             // Order-2
             transitionCounts2[p2][p1][curr] += weight
             originCounts2[p2][p1] += weight
+
+            // Order-3
+            transitionCounts3[p3][p2][p1][curr] += weight
+            originCounts3[p3][p2][p1] += weight
         }
 
         val markovVector = DoubleArray(10)
-        val m1Weight = 0.6
-        val m2Weight = 0.4
+        val m1Weight = 0.40
+        val m2Weight = 0.35
+        val m3Weight = 0.25
 
         for (d in 0..9) {
             val p1Prob = if (originCounts1[lastDigit] > 0) transitionCounts1[lastDigit][d] / originCounts1[lastDigit] else 0.10
-            val p2Prob = if (originCounts2[prevDigit][lastDigit] > 0) transitionCounts2[prevDigit][lastDigit][d] / originCounts2[prevDigit][lastDigit] else p1Prob
-            markovVector[d] = (p1Prob * m1Weight) + (p2Prob * m2Weight)
+            val p2Prob = if (originCounts2[prevDigit1][lastDigit] > 0) transitionCounts2[prevDigit1][lastDigit][d] / originCounts2[prevDigit1][lastDigit] else p1Prob
+            val p3Prob = if (originCounts3[prevDigit2][prevDigit1][lastDigit] > 0) transitionCounts3[prevDigit2][prevDigit1][lastDigit][d] / originCounts3[prevDigit2][prevDigit1][lastDigit] else p2Prob
+            markovVector[d] = (p1Prob * m1Weight) + (p2Prob * m2Weight) + (p3Prob * m3Weight)
         }
 
         // ---------------------------------------------------------------------
         // 2. FORWARD PATTERN READING ENGINE (Sequences: Dragon, ZigZag, Mirror, 1-2-1)
         // ---------------------------------------------------------------------
-        val recentBsSequence = periodsToAnalyze.take(20).map { it.bigSmall }
+        val recentBsSequence = periodsToAnalyze.take(25).map { it.bigSmall }
         val (forwardPattern, forwardMatch, forwardBs) = detectForwardPattern(recentBsSequence)
 
         // ---------------------------------------------------------------------
@@ -113,23 +128,33 @@ class WingoMlEngine {
         val (dealerTrapScore, dealerMode, psychologicalAction) = evaluateDealerTraps(periodsToAnalyze, forwardMatch, reverseInversionScore)
 
         // ---------------------------------------------------------------------
-        // 5. MULTI-WINDOW N-GRAM & FREQUENCY DECAY
+        // 5. DEEP SUBSEQUENCE N-GRAM MATCHING ENGINE (Window length 2, 3, 4, 5)
         // ---------------------------------------------------------------------
         val ngramBigSmallCounts = DoubleArray(2) // 0=SMALL, 1=BIG
         val ngramDigitCounts = DoubleArray(10)
         var totalNgramMatches = 0.0
 
-        if (periodsToAnalyze.size >= 4) {
-            val p0Bs = periodsToAnalyze[0].bigSmall
-            val p1Bs = periodsToAnalyze[1].bigSmall
+        if (periodsToAnalyze.size >= 6) {
+            val seq4 = periodsToAnalyze.take(4).map { it.bigSmall }
 
-            for (i in 1 until periodsToAnalyze.size - 2) {
-                val matchBs0 = periodsToAnalyze[i + 1].bigSmall
-                val matchBs1 = periodsToAnalyze[i + 2].bigSmall
-                if (matchBs0 == p0Bs && matchBs1 == p1Bs) {
+            for (i in 1 until periodsToAnalyze.size - 4) {
+                val candidateSeq = listOf(
+                    periodsToAnalyze[i + 1].bigSmall,
+                    periodsToAnalyze[i + 2].bigSmall,
+                    periodsToAnalyze[i + 3].bigSmall,
+                    periodsToAnalyze[i + 4].bigSmall
+                )
+
+                var matchLength = 0
+                for (k in 0..3) {
+                    if (candidateSeq[k] == seq4[k]) matchLength++ else break
+                }
+
+                if (matchLength >= 2) {
                     val outcomeBs = periodsToAnalyze[i].bigSmall
                     val outcomeDigit = periodsToAnalyze[i].number.coerceIn(0, 9)
-                    val weight = exp(-0.04 * i)
+                    val weight = exp(-0.02 * i) * (matchLength * 0.5)
+
                     if (outcomeBs == "BIG") ngramBigSmallCounts[1] += weight
                     else ngramBigSmallCounts[0] += weight
 
@@ -148,11 +173,11 @@ class WingoMlEngine {
             for (d in 0..9) ngramDigitVector[d] = markovVector[d]
         }
 
-        // Frequency Vector (Last 30 periods decay)
+        // Frequency Vector with Adaptive Exponential Decay
         val frequencyVector = DoubleArray(10)
         var totalWeight = 0.0
-        periodsToAnalyze.take(30).forEachIndexed { index, record ->
-            val weight = exp(-0.10 * index)
+        periodsToAnalyze.take(40).forEachIndexed { index, record ->
+            val weight = exp(-0.06 * index)
             val d = record.number.coerceIn(0, 9)
             frequencyVector[d] += weight
             totalWeight += weight
@@ -161,71 +186,66 @@ class WingoMlEngine {
             for (d in 0..9) frequencyVector[d] /= totalWeight
         }
 
-        // ---------------------------------------------------------------------
-        // 6. TARGET PERIOD HARMONICS (High-entropy period-specific neural seed)
-        // ---------------------------------------------------------------------
-        val targetSeedVector = DoubleArray(10) { 0.10 }
-        if (!targetPeriodId.isNullOrBlank()) {
-            val digitsOnly = targetPeriodId.filter { it.isDigit() }
-            val pLong = digitsOnly.toLongOrNull() ?: targetPeriodId.hashCode().toLong()
-
-            // Dynamic mixing seeds using pLong and algorithm
-            val h1 = kotlin.math.abs(splitMix64(pLong * 31L + algorithm.ordinal * 17L))
-            val h2 = kotlin.math.abs(splitMix64(pLong * 101L + algorithm.ordinal * 43L + 13L))
-            val h3 = kotlin.math.abs(splitMix64(pLong * 997L + algorithm.ordinal * 71L + 29L))
-            val h4 = kotlin.math.abs(splitMix64(pLong * 7919L + 37L))
-
-            val seed1 = (h1 % 10).toInt()
-            val seed2 = (h2 % 10).toInt()
-            val seed3 = (h3 % 10).toInt()
-            val seed4 = (h4 % 10).toInt()
-
-            for (d in 0..9) {
-                targetSeedVector[d] = 0.05 +
-                        (if (d == seed1) 0.18 else 0.0) +
-                        (if (d == seed2) 0.14 else 0.0) +
-                        (if (d == seed3) 0.11 else 0.0) +
-                        (if (d == seed4) 0.08 else 0.0)
+        // Latency Vector (Cold Digit Catch-up vs Hot Persistence)
+        val latencyVector = DoubleArray(10) { 0.10 }
+        val lastSeen = IntArray(10) { 999 }
+        periodsToAnalyze.forEachIndexed { idx, rec ->
+            val d = rec.number.coerceIn(0, 9)
+            if (lastSeen[d] == 999) lastSeen[d] = idx
+        }
+        var totalLatencyWeight = 0.0
+        for (d in 0..9) {
+            val gap = lastSeen[d]
+            val latWeight = when {
+                gap in 8..20 -> 0.18 // Ideal catchup window
+                gap in 3..7 -> 0.12  // Regular distribution
+                gap <= 2 -> 0.08    // Recent hit
+                else -> 0.10        // Extremely cold
             }
+            latencyVector[d] = latWeight
+            totalLatencyWeight += latWeight
+        }
+        if (totalLatencyWeight > 0) {
+            for (d in 0..9) latencyVector[d] /= totalLatencyWeight
         }
 
         // ---------------------------------------------------------------------
-        // 7. ENSEMBLE COMBINATION & DYNAMIC PATTERN WEIGHTING
+        // 6. ENSEMBLE COMBINATION & DYNAMIC PATTERN WEIGHTING
         // ---------------------------------------------------------------------
         for (d in 0..9) {
             when (algorithm) {
                 AlgorithmType.MARKOV_CHAIN -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.35) +
-                            (ngramDigitVector[d] * 0.25) +
-                            (frequencyVector[d] * 0.20) +
-                            (targetSeedVector[d] * 0.20)
+                    digitProbabilities[d] = (markovVector[d] * 0.45) +
+                            (ngramDigitVector[d] * 0.30) +
+                            (frequencyVector[d] * 0.15) +
+                            (latencyVector[d] * 0.10)
                 }
                 AlgorithmType.TREND_MOMENTUM -> {
-                    digitProbabilities[d] = (frequencyVector[d] * 0.35) +
-                            (ngramDigitVector[d] * 0.25) +
+                    digitProbabilities[d] = (frequencyVector[d] * 0.40) +
+                            (ngramDigitVector[d] * 0.30) +
                             (markovVector[d] * 0.20) +
-                            (targetSeedVector[d] * 0.20)
+                            (latencyVector[d] * 0.10)
                 }
                 AlgorithmType.HYBRID_AI -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.30) +
-                            (ngramDigitVector[d] * 0.25) +
-                            (frequencyVector[d] * 0.25) +
-                            (targetSeedVector[d] * 0.20)
+                    digitProbabilities[d] = (ngramDigitVector[d] * 0.40) +
+                            (markovVector[d] * 0.30) +
+                            (frequencyVector[d] * 0.20) +
+                            (latencyVector[d] * 0.10)
                 }
                 AlgorithmType.DEEP_PSYCHOLOGICAL -> {
-                    digitProbabilities[d] = (markovVector[d] * 0.25) +
-                            (ngramDigitVector[d] * 0.25) +
-                            (frequencyVector[d] * 0.25) +
-                            (targetSeedVector[d] * 0.25)
+                    digitProbabilities[d] = (markovVector[d] * 0.35) +
+                            (ngramDigitVector[d] * 0.35) +
+                            (frequencyVector[d] * 0.15) +
+                            (latencyVector[d] * 0.15)
                 }
             }
 
             // Anti-repetition discount for recent identical digits in history
             val recent3 = periodsToAnalyze.take(3).map { it.number }
             if (recent3.count { it == d } >= 2) {
-                digitProbabilities[d] *= 0.30
+                digitProbabilities[d] *= 0.25
             } else if (recent3.firstOrNull() == d) {
-                digitProbabilities[d] *= 0.65
+                digitProbabilities[d] *= 0.55
             }
         }
 
@@ -251,21 +271,34 @@ class WingoMlEngine {
             "SMALL" to max(72.0f, min(97.5f, smallSum + (forwardMatch * 0.12f)))
         }
 
-        // Filter primary & secondary digits to guarantee strict alignment with predicted Big/Small category
-        val matchedCategoryDigits = normalizedList.filter {
+        // Primary digit: Highest probability digit in predicted Big/Small category
+        val predictedCategoryDigits = normalizedList.filter {
             if (finalBs == "BIG") it.first >= 5 else it.first < 5
         }.sortedByDescending { it.second }
 
-        var primary = matchedCategoryDigits.firstOrNull() ?: normalizedList.maxByOrNull { it.second }!!
-        var secondary = matchedCategoryDigits.getOrNull(1)
-            ?: normalizedList.filter { it.first != primary.first }.maxByOrNull { it.second }
-            ?: primary
+        // Opposite side digits for backup cover
+        val oppositeCategoryDigits = normalizedList.filter {
+            if (finalBs == "BIG") it.first < 5 else it.first >= 5
+        }.sortedByDescending { it.second }
 
-        // Ensure primary and secondary are distinct
+        val primary = predictedCategoryDigits.firstOrNull() ?: normalizedList.maxByOrNull { it.second }!!
+
+        // Check if there is doubt between BIG and SMALL (balanced sum, lower confidence, or dealer trap risk)
+        val bsMargin = abs(bigSum - smallSum)
+        val hasDoubt = bsMargin < 22.0f || bsConfidence < 88.0f || dealerTrapScore > 48.0f
+
+        val topOpposite = oppositeCategoryDigits.firstOrNull() ?: (if (finalBs == "BIG") (3 to 22f) else (7 to 22f))
+        val secondInPredicted = predictedCategoryDigits.getOrNull(1)
+
+        // When in doubt or for risk hedging, secondary number is selected from the OPPOSITE side
+        var secondary = if (hasDoubt) {
+            topOpposite
+        } else {
+            if (topOpposite.second >= 12.0f) topOpposite else (secondInPredicted ?: topOpposite)
+        }
+
         if (secondary.first == primary.first) {
-            val fallbackDigits = if (finalBs == "BIG") listOf(5, 6, 7, 8, 9) else listOf(0, 1, 2, 3, 4)
-            val alternate = fallbackDigits.firstOrNull { it != primary.first } ?: ((primary.first + 1) % 10)
-            secondary = alternate to (primary.second * 0.75f)
+            secondary = topOpposite
         }
 
         val predictedColor = when (primary.first) {
@@ -297,7 +330,7 @@ class WingoMlEngine {
         val aiReasoning = buildAiReasoningText(
             forwardPattern, forwardMatch, forwardBs,
             reversePattern, reverseInversionScore, reverseBs,
-            dealerTrapScore, dealerMode, psychologicalAction, finalBs, primary.first
+            dealerTrapScore, dealerMode, psychologicalAction, finalBs, primary.first, secondary.first, hasDoubt
         )
 
         return MlPredictionOutput(
@@ -467,7 +500,7 @@ class WingoMlEngine {
         forwardName: String, forwardMatch: Float, forwardBs: String,
         reverseName: String, reverseScore: Float, reverseBs: String,
         trapScore: Float, dealerMode: String, action: String,
-        finalBs: String, primaryDigit: Int
+        finalBs: String, primaryDigit: Int, secondaryDigit: Int, hasDoubt: Boolean
     ): String {
         val actionDesc = if (action == "COUNTER-ATTACK REVERSE") {
             "Reverse Inversion Engine overrides forward momentum due to high Dealer Trap Risk ($trapScore%). Bet against obvious crowd bias."
@@ -475,12 +508,19 @@ class WingoMlEngine {
             "Forward Pattern Match ($forwardMatch%) aligns with Markov state matrix. Mainstream pattern expected to hold."
         }
 
+        val backupDesc = if (hasDoubt) {
+            "Opposite-Side Backup #${secondaryDigit} engaged due to high entropy / doubt threshold."
+        } else {
+            "Secondary Hedge #${secondaryDigit} provided for maximum win coverage."
+        }
+
         return "🤖 AI NEURAL ANALYSIS:\n" +
                 "• Forward Pattern: $forwardName ($forwardBs, ${forwardMatch.toInt()}% match)\n" +
                 "• Reverse Pattern: $reverseName ($reverseBs, ${reverseScore.toInt()}% inversion)\n" +
                 "• Dealer Trap Index: $dealerMode ($trapScore% trap risk)\n" +
                 "• Strategy Directive: $actionDesc\n" +
-                "► FINAL CONFIRMED OUTCOME: $finalBs with Primary Digit #$primaryDigit"
+                "• Coverage Hedge: $backupDesc\n" +
+                "► FINAL CONFIRMED OUTCOME: $finalBs | Primary #$primaryDigit | Backup #$secondaryDigit"
     }
 
     fun generateInitialSyntheticHistory(count: Int = 500, gameMode: String = "1Min"): List<PeriodRecord> {

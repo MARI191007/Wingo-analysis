@@ -338,18 +338,19 @@ fun HeroPredictionCard(
                     val activePrediction = prediction ?: run {
                         val targetId = serverInfo?.currentPeriodId ?: "2026080610001001"
                         val pLong = targetId.filter { it.isDigit() }.toLongOrNull() ?: 1001L
-                        val digit = ((pLong * 31 + 7) % 10).toInt()
-                        val secDigit = ((pLong * 17 + 3) % 10).toInt()
+                        val digit = (kotlin.math.abs(pLong * 31 + 7) % 10).toInt()
                         val bs = if (digit >= 5) "BIG" else "SMALL"
+                        val oppositeBase = if (bs == "BIG") 0 else 5
+                        val secDigit = oppositeBase + (kotlin.math.abs(pLong * 17 + 3) % 5).toInt()
                         val col = if (digit == 0 || digit == 5) "VIOLET" else if (digit in listOf(1,3,7,9)) "GREEN" else "RED"
                         PredictionResult(
                             targetPeriodId = targetId,
                             gameMode = serverInfo?.gameMode ?: "1Min",
                             predictedBigSmall = bs,
                             bigSmallConfidence = 85.0f + (kotlin.math.abs(pLong) % 12),
-                            primaryNumber = kotlin.math.abs(digit),
+                            primaryNumber = digit,
                             primaryProbability = 42f,
-                            secondaryNumber = if (secDigit != digit) kotlin.math.abs(secDigit) else (kotlin.math.abs(digit) + 1) % 10,
+                            secondaryNumber = secDigit,
                             secondaryProbability = 35f,
                             predictedColor = col,
                             mlAlgorithm = selectedAlgorithm.displayName,
@@ -471,7 +472,7 @@ fun HeroPredictionCard(
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "SECONDARY (${String.format(Locale.US, "%.0f", activePrediction.secondaryProbability)}%)",
+                                text = "BACKUP HEDGE (${String.format(Locale.US, "%.0f", activePrediction.secondaryProbability)}%)",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White.copy(alpha = 0.9f),
