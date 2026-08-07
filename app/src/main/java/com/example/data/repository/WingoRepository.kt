@@ -106,62 +106,69 @@ class WingoRepository(
                     predictionDao.updatePrediction(updated)
                 }
             }
-            onlineRecords
-        } else {
-            // Fallback sync: Ensure history is continuously generated up to the current closed period
-            val existing = periodDao.getRecentPeriodsList(gameMode, 50)
-            val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
-            val activePeriodLong = serverInfo.currentPeriodId.toLongOrNull()
+        }
 
-            if (existing.isEmpty()) {
-                seedBaselinePeriodHistory(gameMode)
-            } else if (activePeriodLong != null) {
-                val latestInDb = existing.firstOrNull()?.periodId?.toLongOrNull()
-                val closedPeriodLong = activePeriodLong - 1L
-                if (latestInDb == null || latestInDb < closedPeriodLong) {
-                    val startId = if (latestInDb != null && (closedPeriodLong - latestInDb) <= 50) latestInDb + 1L else (closedPeriodLong - 20L)
-                    val newRecords = mutableListOf<PeriodRecord>()
-                    for (id in startId..closedPeriodLong) {
-                        val periodIdStr = id.toString()
-                        val digit = remoteDataSource.getOnlineServerDigitForPeriod(periodIdStr, gameMode)
-                        val bs = if (digit >= 5) "BIG" else "SMALL"
-                        val col = remoteDataSource.getDigitColor(digit)
-                        newRecords.add(
-                            PeriodRecord(
-                                periodId = periodIdStr,
-                                gameMode = gameMode,
-                                number = digit,
-                                bigSmall = bs,
-                                color = col,
-                                timestamp = System.currentTimeMillis(),
-                                isRealVerified = true
-                            )
+        // Fill any remaining history gaps up to current closed period (up to 1000 records)
+        val existing = periodDao.getRecentPeriodsList(gameMode, 1000)
+        val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
+        val activePeriodLong = serverInfo.currentPeriodId.toLongOrNull()
+
+        if (existing.isEmpty()) {
+            seedBaselinePeriodHistory(gameMode)
+        } else if (activePeriodLong != null) {
+            val latestInDb = existing.firstOrNull()?.periodId?.toLongOrNull()
+            val closedPeriodLong = activePeriodLong - 1L
+            if (latestInDb == null || latestInDb < closedPeriodLong) {
+                // Catch up continuously for up to 1000 missed periods
+                val maxCatchupCount = 1000L
+                val startId = if (latestInDb != null) {
+                    maxOf(latestInDb + 1L, closedPeriodLong - maxCatchupCount)
+                } else {
+                    closedPeriodLong - maxCatchupCount
+                }
+                
+                val newRecords = mutableListOf<PeriodRecord>()
+                for (id in startId..closedPeriodLong) {
+                    val periodIdStr = id.toString()
+                    val digit = remoteDataSource.getOnlineServerDigitForPeriod(periodIdStr, gameMode)
+                    val bs = if (digit >= 5) "BIG" else "SMALL"
+                    val col = remoteDataSource.getDigitColor(digit)
+                    newRecords.add(
+                        PeriodRecord(
+                            periodId = periodIdStr,
+                            gameMode = gameMode,
+                            number = digit,
+                            bigSmall = bs,
+                            color = col,
+                            timestamp = System.currentTimeMillis() - ((closedPeriodLong - id) * serverInfo.intervalSeconds * 1000L),
+                            isRealVerified = true
                         )
-                    }
-                    if (newRecords.isNotEmpty()) {
-                        periodDao.insertPeriods(newRecords)
-                        // Re-verify predictions for newly closed periods
-                        newRecords.forEach { record ->
-                            val prediction = predictionDao.getPredictionForPeriod(record.periodId)
-                            if (prediction != null && prediction.actualNumber == null) {
-                                val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
-                                        (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
-                                val updated = prediction.copy(
-                                    actualNumber = record.number,
-                                    actualBigSmall = record.bigSmall,
-                                    isWin = isWin
-                                )
-                                predictionDao.updatePrediction(updated)
-                            }
+                    )
+                }
+                if (newRecords.isNotEmpty()) {
+                    periodDao.insertPeriods(newRecords)
+                    // Re-verify predictions for newly closed periods
+                    newRecords.forEach { record ->
+                        val prediction = predictionDao.getPredictionForPeriod(record.periodId)
+                        if (prediction != null && prediction.actualNumber == null) {
+                            val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
+                                    (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
+                            val updated = prediction.copy(
+                                actualNumber = record.number,
+                                actualBigSmall = record.bigSmall,
+                                isWin = isWin
+                            )
+                            predictionDao.updatePrediction(updated)
                         }
                     }
                 }
-                periodDao.getRecentPeriodsList(gameMode, 50)
-            } else {
-                existing
             }
+            periodDao.getRecentPeriodsList(gameMode, 1000)
+        } else {
+            existing
         }
     }
+
 
     suspend fun ingestYaarwinLiveHistory(
         records: List<PeriodRecord>

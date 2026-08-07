@@ -57,7 +57,7 @@ class WingoMlEngine {
         val periodsToAnalyze = history
             .sortedByDescending { it.periodId.filter { c -> c.isDigit() }.toLongOrNull() ?: 0L }
             .distinctBy { it.periodId }
-            .take(500)
+            .take(1000)
 
         val digitProbabilities = DoubleArray(10) { 0.10 } // Base uniform 10%
 
