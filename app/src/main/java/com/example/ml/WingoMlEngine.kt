@@ -234,6 +234,11 @@ class WingoMlEngine {
             for (d in 0..9) patternBreakVector[d] = 0.10
         }
 
+        // Color momentum & number pattern analyzer
+        val recent10Colors = periodsToAnalyze.take(10).map { it.color }
+        val greenCount = recent10Colors.count { it == "GREEN" }
+        val redCount = recent10Colors.count { it == "RED" }
+
         // ---------------------------------------------------------------------
         // 7. ENSEMBLE COMBINATION & UNIFIED 5-LAYER INTEGRATION
         // ---------------------------------------------------------------------
@@ -270,12 +275,22 @@ class WingoMlEngine {
                 }
             }
 
-            // Anti-repetition discount for recent identical digits in history
+            // Color momentum adjustment
+            val digitColor = when (d) {
+                1, 3, 7, 9 -> "GREEN"
+                2, 4, 6, 8 -> "RED"
+                else -> "VIOLET"
+            }
+            if (digitColor == "GREEN" && greenCount > redCount) {
+                digitProbabilities[d] *= 1.15
+            } else if (digitColor == "RED" && redCount > greenCount) {
+                digitProbabilities[d] *= 1.15
+            }
+
+            // Only apply mild dampening if a digit repeats 3 times consecutively (triple repeat)
             val recent3 = periodsToAnalyze.take(3).map { it.number }
-            if (recent3.count { it == d } >= 2) {
-                digitProbabilities[d] *= 0.25
-            } else if (recent3.firstOrNull() == d) {
-                digitProbabilities[d] *= 0.55
+            if (recent3.size >= 3 && recent3[0] == d && recent3[1] == d && recent3[2] == d) {
+                digitProbabilities[d] *= 0.70
             }
         }
 
@@ -301,12 +316,12 @@ class WingoMlEngine {
             "SMALL" to max(75.0f, min(98.5f, smallSum + (forwardMatch * 0.14f)))
         }
 
-        // Primary digit: Highest probability digit in predicted Big/Small category
+        // Primary digit: #1 highest probability digit in predicted Big/Small category
         val predictedCategoryDigits = normalizedList.filter {
             if (finalBs == "BIG") it.first >= 5 else it.first < 5
         }.sortedByDescending { it.second }
 
-        // Opposite side digits for backup cover
+        // Opposite side digits for alternative analysis
         val oppositeCategoryDigits = normalizedList.filter {
             if (finalBs == "BIG") it.first < 5 else it.first >= 5
         }.sortedByDescending { it.second }
@@ -317,22 +332,15 @@ class WingoMlEngine {
         val bsMargin = abs(bigSum - smallSum)
         val hasDoubt = bsMargin < 12.0f || bsConfidence < 78.0f || dealerTrapScore > 62.0f
 
-        val topOpposite = oppositeCategoryDigits.firstOrNull() ?: (if (finalBs == "BIG") (3 to 20f) else (7 to 20f))
         val sameSideFallbackDigits = if (finalBs == "BIG") listOf(5, 6, 7, 8, 9) else listOf(0, 1, 2, 3, 4)
         val secondInPredicted = predictedCategoryDigits.getOrNull(1)
             ?: (sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { alt -> alt to (primary.second * 0.70f) })
-            ?: topOpposite
+            ?: oppositeCategoryDigits.first()
 
-        // IF HIGH CONFIDENCE (!hasDoubt): Both numbers are on the predicted Big/Small side (e.g. BIG -> 8 & 6).
-        // IF LOW CONFIDENCE / IN DOUBT (hasDoubt): Secondary number is a backup cover from the OPPOSITE side (e.g. BIG -> 8 & 3).
-        var secondary = if (hasDoubt) {
-            topOpposite
-        } else {
-            secondInPredicted
-        }
-
+        // ALWAYS select Primary (#1) and Secondary (#2) numbers to maximize exact number win rate on the predicted side
+        var secondary = secondInPredicted
         if (secondary.first == primary.first) {
-            secondary = if (hasDoubt) topOpposite else (sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { it to 20f } ?: topOpposite)
+            secondary = sameSideFallbackDigits.firstOrNull { it != primary.first }?.let { it to 20f } ?: oppositeCategoryDigits.first()
         }
 
         val predictedColor = when (primary.first) {
