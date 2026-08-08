@@ -194,14 +194,15 @@ class WingoRemoteDataSource {
         val secondsInDay = hours * 3600 + minutes * 60 + seconds
         val periodIndexToday = (secondsInDay / intervalSeconds) + 1
         val typeCode = when (gameMode) {
-            "3Min" -> "10002"
-            "5Min" -> "10003"
-            "10Min" -> "10004"
-            "30s" -> "10005"
-            else -> "10001"
+            "3Min" -> "03"
+            "5Min" -> "05"
+            "10Min" -> "10"
+            "30s" -> "30"
+            else -> "01"
         }
         val formattedIndex = String.format(Locale.US, "%04d", periodIndexToday)
-        return "$formattedDate$typeCode$formattedIndex".filter { it.isDigit() }.toLongOrNull() ?: 20260806100010001L
+        val raw = "$formattedDate$typeCode$formattedIndex"
+        return PeriodUtils.normalizePeriodId(raw, gameMode, nowMs).toLongOrNull() ?: 20260808010001L
     }
 
     private fun parseIndiaLotteryRecords(

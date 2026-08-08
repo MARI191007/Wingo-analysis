@@ -256,55 +256,32 @@ class WingoMlEngine {
             for (d in 0..9) latencyVector[d] /= totalLatWeight
         }
 
-        // Determine target period expected digit to synchronize neural prediction
-        val gameMode = periodsToAnalyze.firstOrNull()?.gameMode ?: "1Min"
-        val activeTargetPeriodId = targetPeriodId ?: run {
-            val latestId = periodsToAnalyze.firstOrNull()?.periodId
-            if (latestId != null) {
-                val digitsOnly = latestId.filter { it.isDigit() }
-                val num = digitsOnly.toLongOrNull()
-                if (num != null) (num + 1).toString() else latestId
-            } else null
-        }
-
-        val targetDigit = if (activeTargetPeriodId != null) {
-            periodsToAnalyze.firstOrNull { it.periodId == activeTargetPeriodId }?.number
-                ?: calculateDeterministicDigit(activeTargetPeriodId, gameMode)
-        } else null
-        val targetBs = if (targetDigit != null) (if (targetDigit >= 5) "BIG" else "SMALL") else null
-
         // ---------------------------------------------------------------------
         // 6. ENSEMBLE DECISION FOR BIG VS SMALL (TREND REVERSAL VS CONTINUATION)
         // ---------------------------------------------------------------------
         var bigScore = 0.0
         var smallScore = 0.0
 
-        // A. Target Period Synchronization Signal (50% Weight when available)
-        if (targetBs != null) {
-            val targetW = 0.50
-            if (targetBs == "BIG") bigScore += targetW else smallScore += targetW
-        }
-
-        // B. Streak Signal Weight (15%)
-        val streakW = 0.15 * streakSignalWeight
+        // A. Streak Reversal vs Continuation Signal (35% Weight)
+        val streakW = 0.35 * streakSignalWeight
         if (streakSignalBs == "BIG") bigScore += streakW else smallScore += streakW
 
-        // C. N-Gram Subsequence Weight (15%)
+        // B. Deep Subsequence N-Gram Pattern Weight (35% Weight)
         val totalNgram = ngramBigWeight + ngramSmallWeight
         if (totalNgram > 0) {
-            bigScore += 0.15 * (ngramBigWeight / totalNgram)
-            smallScore += 0.15 * (ngramSmallWeight / totalNgram)
+            bigScore += 0.35 * (ngramBigWeight / totalNgram)
+            smallScore += 0.35 * (ngramSmallWeight / totalNgram)
         } else {
-            bigScore += 0.075
-            smallScore += 0.075
+            bigScore += 0.175
+            smallScore += 0.175
         }
 
-        // D. Alternating Zig-Zag Weight (10%)
-        val zigZagW = 0.10
+        // C. Alternating Zig-Zag Pattern Flow (15% Weight)
+        val zigZagW = 0.15
         if (expectedZigZagBs == "BIG") bigScore += zigZagW else smallScore += zigZagW
 
-        // E. Mean Reversion & Markov Signal (10%)
-        val meanW = 0.05
+        // D. Mean Reversion & Markov Digit Distribution (15% Weight)
+        val meanW = 0.075
         if (meanReversionBs == "BIG") bigScore += meanW else smallScore += meanW
 
         var markovBigSum = 0.0
@@ -314,11 +291,11 @@ class WingoMlEngine {
         }
         val totalMarkov = markovBigSum + markovSmallSum
         if (totalMarkov > 0) {
-            bigScore += 0.05 * (markovBigSum / totalMarkov)
-            smallScore += 0.05 * (markovSmallSum / totalMarkov)
+            bigScore += 0.075 * (markovBigSum / totalMarkov)
+            smallScore += 0.075 * (markovSmallSum / totalMarkov)
         } else {
-            bigScore += 0.025
-            smallScore += 0.025
+            bigScore += 0.0375
+            smallScore += 0.0375
         }
 
         val totalScore = bigScore + smallScore
@@ -328,10 +305,10 @@ class WingoMlEngine {
         val bsConfidence = min(98.5f, max(82.0f, (winnerRatio * 100.0).toFloat()))
 
         // Confidence determination (Doubt triggers opposite backup number)
-        val hasDoubt = winnerRatio < 0.65 || bsMargin < 0.20 || bsConfidence < 86.0f || currentStreak >= 4
+        val hasDoubt = winnerRatio < 0.65 || bsMargin < 0.20 || bsConfidence < 85.0f || currentStreak >= 4
 
         // ---------------------------------------------------------------------
-        // 7. DIGIT PROBABILITY DISTRIBUTION & SELECTION
+        // 7. DIGIT PROBABILITY DISTRIBUTION & SINGLE-NUMBER SELECTION
         // ---------------------------------------------------------------------
         val digitProbabilities = DoubleArray(10)
         val ngramDigitVector = DoubleArray(10)
@@ -346,11 +323,6 @@ class WingoMlEngine {
                     (markovVector[d] * 0.30) +
                     (frequencyVector[d] * 0.18) +
                     (latencyVector[d] * 0.12)
-
-            // Direct boost if digit matches targetDigit for period synchronization
-            if (targetDigit != null && d == targetDigit) {
-                digitProbabilities[d] *= 8.0
-            }
 
             // Favor digits belonging to the predicted finalBs category
             val isPredictedSide = if (finalBs == "BIG") d >= 5 else d < 5

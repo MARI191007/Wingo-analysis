@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +37,7 @@ import com.example.ui.theme.ImmersiveCardBorder
 import com.example.ui.theme.ImmersiveIndigoLight
 import com.example.ui.theme.ImmersiveSurface
 import com.example.ui.theme.LiveGreen
+import com.example.ui.theme.NeonGold
 import com.example.ui.theme.NeonRed
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
@@ -159,9 +161,33 @@ fun PredictionStatsCard(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(verifiedList) { item ->
-                        val isWin = item.isWin == true
-                        val badgeBg = if (isWin) LiveGreen.copy(alpha = 0.15f) else NeonRed.copy(alpha = 0.15f)
-                        val badgeColor = if (isWin) LiveGreen else NeonRed
+                        val isNumberWin = item.actualNumber != null &&
+                                (item.primaryNumber == item.actualNumber || item.secondaryNumber == item.actualNumber)
+                        val isBigSmallWin = (item.actualBigSmall != null && item.predictedBigSmall == item.actualBigSmall) || (item.isWin == true && !isNumberWin)
+
+                        val statusText = when {
+                            isNumberWin -> "JACKPOT WIN"
+                            isBigSmallWin -> "WIN"
+                            else -> "LOSE"
+                        }
+
+                        val badgeBg = when {
+                            isNumberWin -> NeonGold.copy(alpha = 0.2f)
+                            isBigSmallWin -> LiveGreen.copy(alpha = 0.15f)
+                            else -> NeonRed.copy(alpha = 0.15f)
+                        }
+
+                        val badgeColor = when {
+                            isNumberWin -> NeonGold
+                            isBigSmallWin -> LiveGreen
+                            else -> NeonRed
+                        }
+
+                        val statusIcon = when {
+                            isNumberWin -> Icons.Default.Star
+                            isBigSmallWin -> Icons.Default.CheckCircle
+                            else -> Icons.Default.ThumbDown
+                        }
 
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -198,14 +224,14 @@ fun PredictionStatsCard(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = if (isWin) Icons.Default.CheckCircle else Icons.Default.ThumbDown,
+                                            imageVector = statusIcon,
                                             contentDescription = null,
                                             tint = badgeColor,
                                             modifier = Modifier.size(12.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = if (isWin) "WIN" else "LOSS",
+                                            text = statusText,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = badgeColor

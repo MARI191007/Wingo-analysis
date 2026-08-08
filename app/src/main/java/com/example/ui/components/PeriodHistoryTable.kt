@@ -399,20 +399,44 @@ fun PeriodRowItem(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (prediction != null) {
-                        val isWin = prediction.isWin == true
+                        val isNumberWin = prediction.actualNumber != null &&
+                                (prediction.primaryNumber == prediction.actualNumber || prediction.secondaryNumber == prediction.actualNumber)
+                        val isBigSmallWin = (prediction.actualBigSmall != null && prediction.predictedBigSmall == prediction.actualBigSmall) || (prediction.isWin == true && !isNumberWin)
+
+                        val badgeText = when {
+                            isNumberWin -> "★ JACKPOT WIN"
+                            isBigSmallWin -> "✓ WIN"
+                            else -> "✗ LOSE"
+                        }
+
+                        val badgeBg = when {
+                            isNumberWin -> NeonGold.copy(alpha = 0.2f)
+                            isBigSmallWin -> LiveGreen.copy(alpha = 0.15f)
+                            else -> NeonRed.copy(alpha = 0.15f)
+                        }
+
+                        val badgeBorder = when {
+                            isNumberWin -> NeonGold.copy(alpha = 0.4f)
+                            isBigSmallWin -> LiveGreen.copy(alpha = 0.3f)
+                            else -> NeonRed.copy(alpha = 0.3f)
+                        }
+
+                        val badgeColor = when {
+                            isNumberWin -> NeonGold
+                            isBigSmallWin -> LiveGreen
+                            else -> NeonRed
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = if (isWin) LiveGreen.copy(alpha = 0.15f) else NeonRed.copy(alpha = 0.15f),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isWin) LiveGreen.copy(alpha = 0.3f) else NeonRed.copy(alpha = 0.3f)
-                            )
+                            color = badgeBg,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, badgeBorder)
                         ) {
                             Text(
-                                text = if (isWin) "✓ AI WIN" else "✗ AI LOSS",
+                                text = badgeText,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (isWin) LiveGreen else NeonRed,
+                                color = badgeColor,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }

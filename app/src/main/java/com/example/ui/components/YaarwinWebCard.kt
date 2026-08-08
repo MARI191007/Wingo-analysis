@@ -637,9 +637,11 @@ private fun parseObjectToRecord(obj: JSONObject, gameMode: String): PeriodRecord
     try {
         val rawPId = obj.optString("periodId", obj.optString("period", obj.optString("issueNumber", obj.optString("issue", ""))))
             .replace("*", "").trim()
-        var num = obj.optInt("number", -1)
+        val numStr = obj.optString("number", obj.optString("winningNumber", obj.optString("result", obj.optString("digit", obj.optString("num", "")))))
+        var num = numStr.toIntOrNull() ?: obj.optInt("number", -1)
         if (num == -1) num = obj.optInt("winningNumber", -1)
         if (num == -1) num = obj.optInt("result", -1)
+        if (num == -1) num = obj.optInt("digit", -1)
 
         val cleanDigits = rawPId.filter { it.isDigit() }
         if (cleanDigits.length >= 4 && num in 0..9) {

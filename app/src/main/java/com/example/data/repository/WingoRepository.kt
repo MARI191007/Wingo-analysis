@@ -9,8 +9,6 @@ import com.example.ml.MlPredictionOutput
 import com.example.ml.WingoMlEngine
 import com.example.util.PeriodUtils
 import kotlinx.coroutines.flow.Flow
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 class WingoRepository(
@@ -33,8 +31,13 @@ class WingoRepository(
     }
 
     suspend fun seedBaselinePeriodHistory(gameMode: String): List<PeriodRecord> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val existing = periodDao.getRecentPeriodsList(gameMode, 5)
+        if (existing.size >= 5) {
+            return@withContext periodDao.getRecentPeriodsList(gameMode, 500)
+        }
+
         val serverInfo = calculateCurrentServerPeriod(gameMode)
-        val activePeriodLong = serverInfo.currentPeriodId.toLongOrNull() ?: 2026080510001000L
+        val activePeriodLong = serverInfo.currentPeriodId.filter { it.isDigit() }.toLongOrNull() ?: 20260808010001L
         val closedBasePeriod = activePeriodLong - 1L
 
         val seededList = mutableListOf<PeriodRecord>()
@@ -43,8 +46,8 @@ class WingoRepository(
         val modeHash = gameMode.hashCode().toLong()
 
         for (i in 0 until 50) {
-            val periodIdStr = (closedBasePeriod - i).toString()
-            val pLong = periodIdStr.toLongOrNull() ?: (closedBasePeriod - i)
+            val periodIdStr = PeriodUtils.normalizePeriodId((closedBasePeriod - i).toString(), gameMode)
+            val pLong = periodIdStr.filter { it.isDigit() }.toLongOrNull() ?: (closedBasePeriod - i)
             var z = pLong xor ((i + 1L) * -7046029254386353131L) xor modeHash
             z = (z xor (z ushr 30)) * -4658895280553760867L
             z = (z xor (z ushr 27)) * -7723592293110705685L
@@ -81,19 +84,27 @@ class WingoRepository(
             customSetTimeMs = customSetTimeMs
         )
         if (onlineRecords.isNotEmpty()) {
-            periodDao.insertPeriods(onlineRecords)
+            val normalizedOnline = onlineRecords.map { record ->
+                val normId = PeriodUtils.normalizePeriodId(record.periodId, gameMode)
+                record.copy(
+                    periodId = normId,
+                    gameMode = gameMode,
+                    isRealVerified = true
+                )
+            }
+            periodDao.insertPeriods(normalizedOnline)
             
             // Re-verify existing predictions against synced actual records
             val predictionsList = predictionDao.getAllPredictionsList()
-            onlineRecords.forEach { record ->
-                val normRecordId = PeriodUtils.normalizePeriodId(record.periodId, gameMode)
+            normalizedOnline.forEach { record ->
+                val normRecordId = record.periodId
                 val suffix = normRecordId.takeLast(4)
 
                 predictionsList.filter { pred ->
                     pred.gameMode == gameMode && (
                         pred.targetPeriodId == normRecordId ||
-                        pred.targetPeriodId == record.periodId ||
-                        (suffix.length >= 4 && pred.targetPeriodId.endsWith(suffix))
+                        pred.targetPeriodId.endsWith(suffix) ||
+                        PeriodUtils.normalizePeriodId(pred.targetPeriodId, gameMode) == normRecordId
                     )
                 }.forEach { prediction ->
                     val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
@@ -108,59 +119,47 @@ class WingoRepository(
             }
         }
 
-        // Fill any remaining history gaps up to current closed period (up to 1000 records)
+        // Check DB for recent periods
         val existing = periodDao.getRecentPeriodsList(gameMode, 1000)
         val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
-        val activePeriodLong = serverInfo.currentPeriodId.toLongOrNull()
+        val activePeriodNorm = PeriodUtils.normalizePeriodId(serverInfo.currentPeriodId, gameMode)
+        val activePeriodLong = activePeriodNorm.filter { it.isDigit() }.toLongOrNull()
 
         if (existing.isEmpty()) {
             seedBaselinePeriodHistory(gameMode)
         } else if (activePeriodLong != null) {
-            val latestInDb = existing.firstOrNull()?.periodId?.toLongOrNull()
+            val existingIds = existing.map { PeriodUtils.normalizePeriodId(it.periodId, gameMode) }.toSet()
+            val existingSuffixes = existing.map { it.periodId.takeLast(4) }.toSet()
+            val latestInDb = existing.maxOfOrNull { PeriodUtils.normalizePeriodId(it.periodId, gameMode).filter { c -> c.isDigit() }.toLongOrNull() ?: 0L } ?: 0L
             val closedPeriodLong = activePeriodLong - 1L
-            if (latestInDb == null || latestInDb < closedPeriodLong) {
-                // Catch up continuously for up to 1000 missed periods
-                val maxCatchupCount = 1000L
-                val startId = if (latestInDb != null) {
-                    maxOf(latestInDb + 1L, closedPeriodLong - maxCatchupCount)
-                } else {
-                    closedPeriodLong - maxCatchupCount
-                }
+
+            if (latestInDb > 0L && latestInDb < closedPeriodLong) {
+                val maxCatchupCount = 50L
+                val startId = maxOf(latestInDb + 1L, closedPeriodLong - maxCatchupCount)
                 
                 val newRecords = mutableListOf<PeriodRecord>()
                 for (id in startId..closedPeriodLong) {
-                    val periodIdStr = id.toString()
-                    val digit = remoteDataSource.getOnlineServerDigitForPeriod(periodIdStr, gameMode)
-                    val bs = if (digit >= 5) "BIG" else "SMALL"
-                    val col = remoteDataSource.getDigitColor(digit)
-                    newRecords.add(
-                        PeriodRecord(
-                            periodId = periodIdStr,
-                            gameMode = gameMode,
-                            number = digit,
-                            bigSmall = bs,
-                            color = col,
-                            timestamp = System.currentTimeMillis() - ((closedPeriodLong - id) * serverInfo.intervalSeconds * 1000L),
-                            isRealVerified = true
+                    val periodIdStr = PeriodUtils.normalizePeriodId(id.toString(), gameMode)
+                    val suffix = periodIdStr.takeLast(4)
+                    if (!existingIds.contains(periodIdStr) && !existingSuffixes.contains(suffix)) {
+                        val digit = remoteDataSource.getOnlineServerDigitForPeriod(periodIdStr, gameMode)
+                        val bs = if (digit >= 5) "BIG" else "SMALL"
+                        val col = remoteDataSource.getDigitColor(digit)
+                        newRecords.add(
+                            PeriodRecord(
+                                periodId = periodIdStr,
+                                gameMode = gameMode,
+                                number = digit,
+                                bigSmall = bs,
+                                color = col,
+                                timestamp = System.currentTimeMillis() - ((closedPeriodLong - id) * serverInfo.intervalSeconds * 1000L),
+                                isRealVerified = false
+                            )
                         )
-                    )
+                    }
                 }
                 if (newRecords.isNotEmpty()) {
                     periodDao.insertPeriods(newRecords)
-                    // Re-verify predictions for newly closed periods
-                    newRecords.forEach { record ->
-                        val prediction = predictionDao.getPredictionForPeriod(record.periodId)
-                        if (prediction != null && prediction.actualNumber == null) {
-                            val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
-                                    (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
-                            val updated = prediction.copy(
-                                actualNumber = record.number,
-                                actualBigSmall = record.bigSmall,
-                                isWin = isWin
-                            )
-                            predictionDao.updatePrediction(updated)
-                        }
-                    }
                 }
             }
             periodDao.getRecentPeriodsList(gameMode, 1000)
@@ -169,44 +168,38 @@ class WingoRepository(
         }
     }
 
-
     suspend fun ingestYaarwinLiveHistory(
         records: List<PeriodRecord>
     ): Int = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (records.isNotEmpty()) {
             val gameMode = records.firstOrNull()?.gameMode ?: "1Min"
-            val existingPeriods = periodDao.getRecentPeriodsList(gameMode, 500)
-
             val verifiedRecords = mutableListOf<PeriodRecord>()
+            
             records.forEach { incoming ->
                 val normId = PeriodUtils.normalizePeriodId(incoming.periodId, gameMode)
                 val verified = incoming.copy(
                     periodId = normId,
+                    gameMode = gameMode,
                     isRealVerified = true
                 )
                 verifiedRecords.add(verified)
-
-                // Match and replace any estimated record whose ID matches normId or ends with suffix
-                val suffix = normId.takeLast(4)
-                existingPeriods.forEach { existing ->
-                    if (existing.periodId == normId || (suffix.length >= 4 && existing.periodId.endsWith(suffix))) {
-                        val updatedExisting = existing.copy(
-                            periodId = normId,
-                            number = incoming.number,
-                            bigSmall = incoming.bigSmall,
-                            color = incoming.color,
-                            isRealVerified = true
-                        )
-                        verifiedRecords.add(updatedExisting)
-                    }
-                }
             }
 
             periodDao.insertPeriods(verifiedRecords)
 
+            // Verify ALL matching predictions against incoming verified live records
+            val predictionsList = predictionDao.getAllPredictionsList()
             verifiedRecords.forEach { record ->
-                val prediction = predictionDao.getPredictionForPeriod(record.periodId)
-                if (prediction != null) {
+                val normRecordId = record.periodId
+                val suffix = normRecordId.takeLast(4)
+
+                predictionsList.filter { pred ->
+                    pred.gameMode == gameMode && (
+                        pred.targetPeriodId == normRecordId ||
+                        pred.targetPeriodId.endsWith(suffix) ||
+                        PeriodUtils.normalizePeriodId(pred.targetPeriodId, gameMode) == normRecordId
+                    )
+                }.forEach { prediction ->
                     val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
                             (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
                     val updated = prediction.copy(
@@ -228,7 +221,6 @@ class WingoRepository(
         if (rawText.isBlank()) return@withContext 0
         val importedList = mutableListOf<PeriodRecord>()
         
-        // Regex matches lines or strings containing period numbers (*010570 or 20260805100010570) and winning digits (0-9)
         val pattern = Regex("""\*?(\d{4,20})[\s\S]*?([0-9])""")
         pattern.findAll(rawText).forEach { match ->
             val rawId = match.groupValues[1]
@@ -236,11 +228,7 @@ class WingoRepository(
             if (rawId.length >= 4 && num != null && num in 0..9) {
                 val normId = PeriodUtils.normalizePeriodId(rawId, gameMode)
                 val bs = if (num >= 5) "BIG" else "SMALL"
-                val col = when (num) {
-                    0, 5 -> "VIOLET"
-                    1, 3, 7, 9 -> "GREEN"
-                    else -> "RED"
-                }
+                val col = remoteDataSource.getDigitColor(num)
                 importedList.add(
                     PeriodRecord(
                         periodId = normId,
@@ -270,18 +258,15 @@ class WingoRepository(
         if (digits.isEmpty()) return@withContext 0
 
         val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
-        val activePeriodLong = serverInfo.currentPeriodId.toLongOrNull() ?: 2026080510001000L
+        val activePeriodNorm = PeriodUtils.normalizePeriodId(serverInfo.currentPeriodId, gameMode)
+        val activePeriodLong = activePeriodNorm.filter { it.isDigit() }.toLongOrNull() ?: 20260808010001L
         val closedBasePeriod = activePeriodLong - 1L
 
         val records = mutableListOf<PeriodRecord>()
         digits.take(20).forEachIndexed { index, num ->
-            val periodIdStr = (closedBasePeriod - index).toString()
+            val periodIdStr = PeriodUtils.normalizePeriodId((closedBasePeriod - index).toString(), gameMode)
             val bs = if (num >= 5) "BIG" else "SMALL"
-            val col = when (num) {
-                0, 5 -> "VIOLET"
-                1, 3, 7, 9 -> "GREEN"
-                else -> "RED"
-            }
+            val col = remoteDataSource.getDigitColor(num)
             records.add(
                 PeriodRecord(
                     periodId = periodIdStr,
@@ -295,9 +280,33 @@ class WingoRepository(
             )
         }
 
-        // Clear previous periods for clean user 20-result analysis & insert
         periodDao.clearPeriods(gameMode)
         periodDao.insertPeriods(records)
+
+        // Verify predictions matching user provided digits
+        val predictionsList = predictionDao.getAllPredictionsList()
+        records.forEach { record ->
+            val normRecordId = record.periodId
+            val suffix = normRecordId.takeLast(4)
+
+            predictionsList.filter { pred ->
+                pred.gameMode == gameMode && (
+                    pred.targetPeriodId == normRecordId ||
+                    pred.targetPeriodId.endsWith(suffix) ||
+                    PeriodUtils.normalizePeriodId(pred.targetPeriodId, gameMode) == normRecordId
+                )
+            }.forEach { prediction ->
+                val isWin = (prediction.predictedBigSmall == record.bigSmall) ||
+                        (prediction.primaryNumber == record.number || prediction.secondaryNumber == record.number)
+                val updated = prediction.copy(
+                    actualNumber = record.number,
+                    actualBigSmall = record.bigSmall,
+                    isWin = isWin
+                )
+                predictionDao.updatePrediction(updated)
+            }
+        }
+
         records.size
     }
 
@@ -326,8 +335,8 @@ class WingoRepository(
             val recentNum = recentInDb.periodId.filter { it.isDigit() }.toLongOrNull()
             val calcNum = calcInfo.currentPeriodId.filter { it.isDigit() }.toLongOrNull()
             if (recentNum != null && calcNum != null && calcNum <= recentNum) {
-                val adjustedCurr = incrementPeriodId(recentInDb.periodId, 1)
-                val adjustedNext = incrementPeriodId(recentInDb.periodId, 2)
+                val adjustedCurr = PeriodUtils.normalizePeriodId(incrementPeriodId(recentInDb.periodId, 1), gameMode)
+                val adjustedNext = PeriodUtils.normalizePeriodId(incrementPeriodId(recentInDb.periodId, 2), gameMode)
                 return@withContext calcInfo.copy(
                     currentPeriodId = adjustedCurr,
                     nextPeriodId = adjustedNext
@@ -338,7 +347,6 @@ class WingoRepository(
         calcInfo
     }
 
-    // Server Period ID Calculator fallback based on local clock
     fun calculateCurrentServerPeriod(
         gameMode: String,
         customBasePeriodId: String? = null,
@@ -358,13 +366,15 @@ class WingoRepository(
         val (currentPeriodId, nextPeriodId) = if (!customBasePeriodId.isNullOrBlank() && customSetTimeMs > 0) {
             val elapsedSeconds = (now - customSetTimeMs) / 1000
             val elapsedIntervals = (elapsedSeconds / intervalSeconds)
-            val curr = incrementPeriodId(customBasePeriodId, elapsedIntervals)
-            val nxt = incrementPeriodId(customBasePeriodId, elapsedIntervals + 1)
+            val currRaw = incrementPeriodId(customBasePeriodId, elapsedIntervals)
+            val nxtRaw = incrementPeriodId(customBasePeriodId, elapsedIntervals + 1)
+            val curr = PeriodUtils.normalizePeriodId(currRaw, gameMode)
+            val nxt = PeriodUtils.normalizePeriodId(nxtRaw, gameMode)
             Pair(curr, nxt)
         } else {
             val currLong = remoteDataSource.parsePeriodToLong(null, gameMode, now, intervalSeconds)
-            val curr = currLong.toString()
-            val nxt = (currLong + 1L).toString()
+            val curr = PeriodUtils.normalizePeriodId(currLong.toString(), gameMode)
+            val nxt = PeriodUtils.normalizePeriodId((currLong + 1L).toString(), gameMode)
             Pair(curr, nxt)
         }
 
@@ -392,7 +402,6 @@ class WingoRepository(
         return "$baseId$incrementBy"
     }
 
-
     suspend fun runMlPrediction(
         gameMode: String,
         algorithm: WingoMlEngine.AlgorithmType,
@@ -403,7 +412,7 @@ class WingoRepository(
         if (periodHistory.isEmpty()) return@withContext null
 
         val serverInfo = calculateCurrentServerPeriod(gameMode, customBasePeriodId, customSetTimeMs)
-        val targetPeriod = serverInfo.currentPeriodId
+        val targetPeriod = PeriodUtils.normalizePeriodId(serverInfo.currentPeriodId, gameMode)
 
         val mlOutput: MlPredictionOutput = mlEngine.analyzeAndPredict(
             history = periodHistory,
@@ -434,7 +443,6 @@ class WingoRepository(
         return remoteDataSource.getOnlineServerDigitForPeriod(periodId, gameMode)
     }
 
-    // Ingest new server result when a period closes or is updated
     suspend fun ingestServerPeriodResult(
         periodId: String,
         number: Int,
@@ -443,11 +451,7 @@ class WingoRepository(
     ): PeriodRecord {
         val normId = PeriodUtils.normalizePeriodId(periodId, gameMode)
         val bs = if (number >= 5) "BIG" else "SMALL"
-        val color = when (number) {
-            0, 5 -> "VIOLET"
-            1, 3, 7, 9 -> "GREEN"
-            else -> "RED"
-        }
+        val color = remoteDataSource.getDigitColor(number)
 
         val newRecord = PeriodRecord(
             periodId = normId,
@@ -461,26 +465,15 @@ class WingoRepository(
 
         periodDao.insertPeriod(newRecord)
 
-        // Also check if any existing period matches or ends with this suffix
         val suffix = normId.takeLast(4)
-        val existingList = periodDao.getRecentPeriodsList(gameMode, 500)
-        existingList.forEach { existing ->
-            if (existing.periodId == normId || (suffix.length >= 4 && existing.periodId.endsWith(suffix))) {
-                periodDao.insertPeriod(
-                    existing.copy(
-                        periodId = normId,
-                        number = number,
-                        bigSmall = bs,
-                        color = color,
-                        isRealVerified = isRealVerified
-                    )
-                )
-            }
-        }
-
-        // Verify prediction for this period if present
-        val prediction = predictionDao.getPredictionForPeriod(normId) ?: predictionDao.getPredictionForPeriod(periodId)
-        if (prediction != null) {
+        val predictionsList = predictionDao.getAllPredictionsList()
+        predictionsList.filter { pred ->
+            pred.gameMode == gameMode && (
+                pred.targetPeriodId == normId ||
+                pred.targetPeriodId.endsWith(suffix) ||
+                PeriodUtils.normalizePeriodId(pred.targetPeriodId, gameMode) == normId
+            )
+        }.forEach { prediction ->
             val isWin = (prediction.predictedBigSmall == bs) ||
                     (prediction.primaryNumber == number || prediction.secondaryNumber == number)
             val updated = prediction.copy(
