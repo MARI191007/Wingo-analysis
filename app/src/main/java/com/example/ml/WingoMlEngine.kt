@@ -346,6 +346,15 @@ class WingoMlEngine {
             if (finalBs == "BIG") it.first < 5 else it.first >= 5
         }.sortedByDescending { it.second }
 
+        // Identify hot and cold numbers
+        val digitFrequencies = IntArray(10)
+        periodsToAnalyze.take(50).forEach {
+            if (it.number in 0..9) digitFrequencies[it.number]++
+        }
+        val sortedDigitsByFreq = (0..9).map { it to digitFrequencies[it] }.sortedByDescending { it.second }
+        val hotNumbers = sortedDigitsByFreq.take(3).map { it.first }
+        val coldNumbers = sortedDigitsByFreq.takeLast(3).map { it.first }
+
         val primary = predictedCategoryDigits.firstOrNull() ?: normalizedList.maxByOrNull { it.second }!!
         val sameSideFallbackDigits = if (finalBs == "BIG") listOf(5, 6, 7, 8, 9) else listOf(0, 1, 2, 3, 4)
         val secondInPredicted = predictedCategoryDigits.getOrNull(1)
@@ -354,11 +363,22 @@ class WingoMlEngine {
 
         val topOpposite = oppositeCategoryDigits.firstOrNull() ?: (if (finalBs == "BIG") (3 to 20f) else (7 to 20f))
 
-        // USER DIRECTIVE:
-        // - If confidence level is LOW (hasDoubt == true): Secondary number is a backup cover from OPPOSITE side
-        // - If confidence level is HIGH (hasDoubt == false): Both numbers are on PREDICTED side
+        // MOST POPULAR & POWERFUL LOW-CONFIDENCE STRATEGIES:
+        // 1. Cold-Number & Latency Reversal Strategy (Targeting overdue digits)
+        // 2. Mirror-Pair Mathematical Hedge Strategy (0<->5, 1<->6, 2<->7, 3<->8, 4<->9)
+        // 3. Reverse Inversion Ensemble
+        val mirrorDigit = (primary.first + 5) % 10
+        val topColdDigit = coldNumbers.firstOrNull() ?: mirrorDigit
+
         var secondary = if (hasDoubt) {
-            topOpposite
+            val mirrorCandidate = normalizedList.firstOrNull { it.first == mirrorDigit }
+            val coldCandidate = normalizedList.firstOrNull { it.first == topColdDigit }
+
+            val strategicCover = listOfNotNull(coldCandidate, mirrorCandidate, topOpposite)
+                .filter { it.first != primary.first }
+                .maxByOrNull { it.second } ?: topOpposite
+
+            strategicCover
         } else {
             secondInPredicted
         }
@@ -380,22 +400,14 @@ class WingoMlEngine {
         val bigCount = bsList.take(50).count { it == "BIG" }
         val smallCount = 50 - bigCount
 
-        val digitFrequencies = IntArray(10)
-        periodsToAnalyze.take(50).forEach {
-            if (it.number in 0..9) digitFrequencies[it.number]++
-        }
-        val sortedDigitsByFreq = (0..9).map { it to digitFrequencies[it] }.sortedByDescending { it.second }
-        val hotNumbers = sortedDigitsByFreq.take(3).map { it.first }
-        val coldNumbers = sortedDigitsByFreq.takeLast(3).map { it.first }
-
         val currentStreakType = "$currentBs x$currentStreak"
 
         val reasoningType = if (streakSignalBs != currentBs) "TREND REVERSAL DETECTED" else "TREND CONTINUATION CONFIRMED"
-        val doubtText = if (hasDoubt) "Low Confidence (Backup cover: #${secondary.first} from opposite side)" else "High Confidence (Both digits: #${primary.first} & #${secondary.first} on predicted $finalBs side)"
+        val doubtText = if (hasDoubt) "Low Confidence (Deployed Cold-Number Reversal & Mirror-Pair Strategy: Primary #${primary.first}, Backup #${secondary.first})" else "High Confidence (Both digits: #${primary.first} & #${secondary.first} on predicted $finalBs side)"
         val aiReasoning = "🤖 500-PERIOD PATTERN ENGINE:\n" +
                 "• Directive: $reasoningType (Streak x$currentStreak, Reversal Rate ${(streakReversalRatio * 100).toInt()}%)\n" +
                 "• Subsequence Match: 500-period N-Gram match -> Signal $finalBs\n" +
-                "• Confidence Status: $doubtText\n" +
+                "• Confidence Strategy: $doubtText\n" +
                 "► CONFIRMED PREDICTION: $finalBs | Primary #${primary.first} | Secondary #${secondary.first}"
 
         return MlPredictionOutput(

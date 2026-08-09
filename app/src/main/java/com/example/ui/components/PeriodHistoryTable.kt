@@ -98,7 +98,10 @@ fun PeriodHistoryTable(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.History,
                         contentDescription = "History",
@@ -111,9 +114,13 @@ fun PeriodHistoryTable(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
-                        letterSpacing = 1.sp
+                        letterSpacing = 1.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
@@ -125,7 +132,9 @@ fun PeriodHistoryTable(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextSecondary,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -348,12 +357,17 @@ fun PeriodRowItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = "Period #${period.periodId}",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     if (period.isRealVerified) {
@@ -377,7 +391,9 @@ fun PeriodRowItem(
                                     text = "WEBSITE DATA",
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = LiveGreen
+                                    color = LiveGreen,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -391,11 +407,15 @@ fun PeriodRowItem(
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonOrange,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.width(6.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (prediction != null) {
@@ -437,7 +457,9 @@ fun PeriodRowItem(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = badgeColor,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

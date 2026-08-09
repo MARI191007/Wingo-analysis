@@ -66,7 +66,10 @@ fun PredictionStatsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.Leaderboard,
                         contentDescription = "Stats",
@@ -79,9 +82,13 @@ fun PredictionStatsCard(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
-                        letterSpacing = 1.sp
+                        letterSpacing = 1.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -93,7 +100,9 @@ fun PredictionStatsCard(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = LiveGreen,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -201,19 +210,25 @@ fun PredictionStatsCard(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "Period: ${item.targetPeriodId}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "Pred: ${item.predictedBigSmall} [${item.primaryNumber}, ${item.secondaryNumber}] | Actual: ${item.actualBigSmall ?: "-"} (${item.actualNumber ?: "-"})",
                                         fontSize = 10.sp,
-                                        color = TextSecondary
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                 }
+
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
@@ -234,7 +249,9 @@ fun PredictionStatsCard(
                                             text = statusText,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = badgeColor
+                                            color = badgeColor,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }

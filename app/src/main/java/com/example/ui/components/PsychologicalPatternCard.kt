@@ -69,7 +69,10 @@ fun PsychologicalPatternCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.Psychology,
                         contentDescription = "Psychology ML",
@@ -82,9 +85,13 @@ fun PsychologicalPatternCard(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = TextPrimary,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
@@ -96,7 +103,9 @@ fun PsychologicalPatternCard(
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = NeonGold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -227,7 +236,10 @@ fun PsychologicalPatternCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
                             imageVector = Icons.Default.SecurityUpdateWarning,
                             contentDescription = null,
@@ -240,15 +252,21 @@ fun PsychologicalPatternCard(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.5.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
+
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     Text(
                         text = "TRAP RISK: ${mlOutput?.dealerTrapScore?.toInt() ?: 35}%",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if ((mlOutput?.dealerTrapScore ?: 35f) > 50f) NeonRed else LiveGreen
+                        color = if ((mlOutput?.dealerTrapScore ?: 35f) > 50f) NeonRed else LiveGreen,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
