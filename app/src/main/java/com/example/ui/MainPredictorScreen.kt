@@ -33,7 +33,6 @@ import com.example.ui.components.PeriodHistoryTable
 import com.example.ui.components.PredictionStatsCard
 import com.example.ui.components.PsychologicalPatternCard
 import com.example.ui.components.SyncRealPeriodDialog
-import com.example.ui.components.YaarwinWebCard
 import com.example.ui.theme.ImmersiveBackground
 
 @Composable
@@ -130,16 +129,6 @@ fun MainPredictorScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
 
                                 AnalyticsHeatmapCard(mlOutput = uiState.mlOutputDetails)
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Embedded Yaarwin Live Portal directly at the bottom
-                                YaarwinWebCard(
-                                    currentGameMode = uiState.selectedGameMode,
-                                    onHistoryExtracted = { records ->
-                                        viewModel.ingestYaarwinLiveHistory(records)
-                                    }
-                                )
 
                                 Spacer(modifier = Modifier.height(24.dp))
                             }

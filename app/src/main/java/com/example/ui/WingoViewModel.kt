@@ -21,7 +21,7 @@ import kotlin.random.Random
 
 data class WingoUiState(
     val selectedGameMode: String = "1Min",
-    val selectedAlgorithm: WingoMlEngine.AlgorithmType = WingoMlEngine.AlgorithmType.MARKOV_CHAIN,
+    val selectedAlgorithm: WingoMlEngine.AlgorithmType = WingoMlEngine.AlgorithmType.ALL_IN_ONE,
     val serverInfo: ServerPeriodInfo? = null,
     val periodHistory: List<PeriodRecord> = emptyList(),
     val latestPrediction: PredictionResult? = null,

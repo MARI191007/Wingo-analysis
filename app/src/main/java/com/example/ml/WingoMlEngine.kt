@@ -42,6 +42,7 @@ data class HeatmapInfo(
 class WingoMlEngine {
 
     enum class AlgorithmType(val displayName: String) {
+        ALL_IN_ONE("All-In-One Ensemble AI"),
         MARKOV_CHAIN("Markov Matrix Neural"),
         TREND_MOMENTUM("Trend Momentum Ensemble"),
         HYBRID_AI("Hybrid AI Pattern Engine"),
@@ -257,45 +258,70 @@ class WingoMlEngine {
         }
 
         // ---------------------------------------------------------------------
-        // 6. ENSEMBLE DECISION FOR BIG VS SMALL (TREND REVERSAL VS CONTINUATION)
+        // 6. PATTERN & PSYCHOLOGICAL TRAP EVALUATION
         // ---------------------------------------------------------------------
-        var bigScore = 0.0
-        var smallScore = 0.0
+        val (forwardPattern, forwardMatch, forwardBs) = detectForwardPattern(bsList.take(25))
+        val (reversePattern, reverseInversionScore, reverseBs) = detectReversePattern(bsList.take(25), periodsToAnalyze)
+        val (dealerTrapScore, dealerMode, psychologicalAction) = evaluateDealerTraps(periodsToAnalyze, forwardMatch, reverseInversionScore)
 
-        // A. Streak Reversal vs Continuation Signal (35% Weight)
-        val streakW = 0.35 * streakSignalWeight
-        if (streakSignalBs == "BIG") bigScore += streakW else smallScore += streakW
-
-        // B. Deep Subsequence N-Gram Pattern Weight (35% Weight)
-        val totalNgram = ngramBigWeight + ngramSmallWeight
-        if (totalNgram > 0) {
-            bigScore += 0.35 * (ngramBigWeight / totalNgram)
-            smallScore += 0.35 * (ngramSmallWeight / totalNgram)
-        } else {
-            bigScore += 0.175
-            smallScore += 0.175
-        }
-
-        // C. Alternating Zig-Zag Pattern Flow (15% Weight)
-        val zigZagW = 0.15
-        if (expectedZigZagBs == "BIG") bigScore += zigZagW else smallScore += zigZagW
-
-        // D. Mean Reversion & Markov Digit Distribution (15% Weight)
-        val meanW = 0.075
-        if (meanReversionBs == "BIG") bigScore += meanW else smallScore += meanW
-
+        // Calculate sub-scores for each individual engine
         var markovBigSum = 0.0
         var markovSmallSum = 0.0
         for (d in 0..9) {
             if (d >= 5) markovBigSum += markovVector[d] else markovSmallSum += markovVector[d]
         }
         val totalMarkov = markovBigSum + markovSmallSum
-        if (totalMarkov > 0) {
-            bigScore += 0.075 * (markovBigSum / totalMarkov)
-            smallScore += 0.075 * (markovSmallSum / totalMarkov)
+        val markovBigRatio = if (totalMarkov > 0) markovBigSum / totalMarkov else 0.5
+        val markovSmallRatio = 1.0 - markovBigRatio
+
+        val streakBigRatio = if (streakSignalBs == "BIG") streakSignalWeight else (1.0 - streakSignalWeight)
+        val meanBigRatio = if (meanReversionBs == "BIG") 0.8 else 0.2
+        val trendBigScore = (streakBigRatio * 0.7) + (meanBigRatio * 0.3)
+        val trendSmallScore = 1.0 - trendBigScore
+
+        val totalNgram = ngramBigWeight + ngramSmallWeight
+        val ngramBigRatio = if (totalNgram > 0) ngramBigWeight / totalNgram else 0.5
+        val zigZagBigRatio = if (expectedZigZagBs == "BIG") 0.8 else 0.2
+        val forwardBigRatio = if (forwardBs == "BIG") (forwardMatch / 100.0) else (1.0 - forwardMatch / 100.0)
+        val hybridBigScore = (ngramBigRatio * 0.5) + (zigZagBigRatio * 0.25) + (forwardBigRatio * 0.25)
+        val hybridSmallScore = 1.0 - hybridBigScore
+
+        val trapBigRatio = if (psychologicalAction == "COUNTER-ATTACK REVERSE") {
+            if (currentBs == "BIG") 0.15 else 0.85
         } else {
-            bigScore += 0.0375
-            smallScore += 0.0375
+            if (reverseBs == "BIG") (reverseInversionScore / 100.0) else (1.0 - reverseInversionScore / 100.0)
+        }
+        val psychBigScore = trapBigRatio.coerceIn(0.05, 0.95)
+        val psychSmallScore = 1.0 - psychBigScore
+
+        // Combine sub-scores based on selected algorithm
+        val (bigScore, smallScore) = when (algorithm) {
+            AlgorithmType.ALL_IN_ONE -> {
+                // ALL-IN-ONE: Equal 25% synthesis of Markov, Trend, Hybrid, and Deep Psych engines
+                val b = (markovBigRatio * 0.25) + (trendBigScore * 0.25) + (hybridBigScore * 0.25) + (psychBigScore * 0.25)
+                val s = (markovSmallRatio * 0.25) + (trendSmallScore * 0.25) + (hybridSmallScore * 0.25) + (psychSmallScore * 0.25)
+                Pair(b, s)
+            }
+            AlgorithmType.MARKOV_CHAIN -> {
+                val b = (markovBigRatio * 0.50) + (hybridBigScore * 0.20) + (trendBigScore * 0.15) + (psychBigScore * 0.15)
+                val s = (markovSmallRatio * 0.50) + (hybridSmallScore * 0.20) + (trendSmallScore * 0.15) + (psychSmallScore * 0.15)
+                Pair(b, s)
+            }
+            AlgorithmType.TREND_MOMENTUM -> {
+                val b = (trendBigScore * 0.50) + (markovBigRatio * 0.20) + (hybridBigScore * 0.15) + (psychBigScore * 0.15)
+                val s = (trendSmallScore * 0.50) + (markovSmallRatio * 0.20) + (hybridSmallScore * 0.15) + (psychSmallScore * 0.15)
+                Pair(b, s)
+            }
+            AlgorithmType.HYBRID_AI -> {
+                val b = (hybridBigScore * 0.50) + (markovBigRatio * 0.20) + (trendBigScore * 0.15) + (psychBigScore * 0.15)
+                val s = (hybridSmallScore * 0.50) + (markovSmallRatio * 0.20) + (trendSmallScore * 0.15) + (psychSmallScore * 0.15)
+                Pair(b, s)
+            }
+            AlgorithmType.DEEP_PSYCHOLOGICAL -> {
+                val b = (psychBigScore * 0.50) + (trendBigScore * 0.20) + (hybridBigScore * 0.15) + (markovBigRatio * 0.15)
+                val s = (psychSmallScore * 0.50) + (trendSmallScore * 0.20) + (hybridSmallScore * 0.15) + (markovSmallRatio * 0.15)
+                Pair(b, s)
+            }
         }
 
         val totalScore = bigScore + smallScore
@@ -393,22 +419,52 @@ class WingoMlEngine {
             else -> "RED"
         }
 
-        val (forwardPattern, forwardMatch, forwardBs) = detectForwardPattern(bsList.take(25))
-        val (reversePattern, reverseInversionScore, reverseBs) = detectReversePattern(bsList.take(25), periodsToAnalyze)
-        val (dealerTrapScore, dealerMode, psychologicalAction) = evaluateDealerTraps(periodsToAnalyze, forwardMatch, reverseInversionScore)
-
         val bigCount = bsList.take(50).count { it == "BIG" }
         val smallCount = 50 - bigCount
 
         val currentStreakType = "$currentBs x$currentStreak"
 
         val reasoningType = if (streakSignalBs != currentBs) "TREND REVERSAL DETECTED" else "TREND CONTINUATION CONFIRMED"
-        val doubtText = if (hasDoubt) "Low Confidence (Deployed Cold-Number Reversal & Mirror-Pair Strategy: Primary #${primary.first}, Backup #${secondary.first})" else "High Confidence (Both digits: #${primary.first} & #${secondary.first} on predicted $finalBs side)"
-        val aiReasoning = "🤖 500-PERIOD PATTERN ENGINE:\n" +
-                "• Directive: $reasoningType (Streak x$currentStreak, Reversal Rate ${(streakReversalRatio * 100).toInt()}%)\n" +
-                "• Subsequence Match: 500-period N-Gram match -> Signal $finalBs\n" +
+        val doubtText = if (hasDoubt) "Low Confidence Strategy (Deployed Cold-Number & Mirror-Pair Cover: Primary #${primary.first}, Backup #${secondary.first})" else "High Confidence (Primary #${primary.first} & Secondary #${secondary.first} on $finalBs side)"
+
+        val aiReasoning = when (algorithm) {
+            AlgorithmType.ALL_IN_ONE -> {
+                "🤖 ALL-IN-ONE MASTER ENSEMBLE AI:\n" +
+                "• Master Synthesis: 4 AI Models Combined (Markov Matrix + Trend Momentum + Hybrid Patterns + Deep Psychological AI)\n" +
+                "• Directional Signals: Forward ($forwardBs, ${forwardMatch.toInt()}%) | Reverse ($reverseBs, ${reverseInversionScore.toInt()}%) | Dealer Risk ($dealerMode)\n" +
+                "• Strategy Directive: $reasoningType (Streak x$currentStreak, Reversal Rate ${(streakReversalRatio * 100).toInt()}%)\n" +
+                "• Confidence Strategy: $doubtText\n" +
+                "► MASTER CONFIRMED OUTCOME: $finalBs | Primary #${primary.first} | Backup #${secondary.first}"
+            }
+            AlgorithmType.MARKOV_CHAIN -> {
+                "🤖 MARKOV MATRIX NEURAL:\n" +
+                "• Transition Matrices (Order-1 & Order-2) -> Signal $finalBs\n" +
+                "• Strategy Directive: $reasoningType (Streak x$currentStreak)\n" +
                 "• Confidence Strategy: $doubtText\n" +
                 "► CONFIRMED PREDICTION: $finalBs | Primary #${primary.first} | Secondary #${secondary.first}"
+            }
+            AlgorithmType.TREND_MOMENTUM -> {
+                "🤖 TREND MOMENTUM ENSEMBLE:\n" +
+                "• Streak Momentum & Macro Mean Reversion -> Signal $finalBs\n" +
+                "• Strategy Directive: $reasoningType (Streak x$currentStreak)\n" +
+                "• Confidence Strategy: $doubtText\n" +
+                "► CONFIRMED PREDICTION: $finalBs | Primary #${primary.first} | Secondary #${secondary.first}"
+            }
+            AlgorithmType.HYBRID_AI -> {
+                "🤖 HYBRID AI PATTERN ENGINE:\n" +
+                "• N-Gram Subsequence Matching & Zig-Zag Flow -> Signal $finalBs\n" +
+                "• Strategy Directive: $reasoningType (Forward Match ${forwardMatch.toInt()}%)\n" +
+                "• Confidence Strategy: $doubtText\n" +
+                "► CONFIRMED PREDICTION: $finalBs | Primary #${primary.first} | Secondary #${secondary.first}"
+            }
+            AlgorithmType.DEEP_PSYCHOLOGICAL -> {
+                "🤖 DEEP PSYCHOLOGICAL AI:\n" +
+                "• Dealer Trap Index ($dealerMode) & Pattern Inversion -> Signal $finalBs\n" +
+                "• Strategy Directive: $psychologicalAction\n" +
+                "• Confidence Strategy: $doubtText\n" +
+                "► CONFIRMED PREDICTION: $finalBs | Primary #${primary.first} | Secondary #${secondary.first}"
+            }
+        }
 
         return MlPredictionOutput(
             bigSmallPrediction = finalBs,
