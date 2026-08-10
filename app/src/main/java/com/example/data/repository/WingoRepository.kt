@@ -487,6 +487,10 @@ class WingoRepository(
         return newRecord
     }
 
+    suspend fun clearVerifiedPredictions(gameMode: String) {
+        predictionDao.clearPredictionsForMode(gameMode)
+    }
+
     suspend fun clearHistory(gameMode: String) {
         periodDao.clearPeriods(gameMode)
         predictionDao.clearPredictions()

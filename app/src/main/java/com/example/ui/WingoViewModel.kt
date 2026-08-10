@@ -294,6 +294,14 @@ class WingoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun resetWinRateData() {
+        viewModelScope.launch {
+            val mode = _uiState.value.selectedGameMode
+            repository.clearVerifiedPredictions(mode)
+            generateMlPrediction()
+        }
+    }
+
     fun resetData() {
         viewModelScope.launch {
             val mode = _uiState.value.selectedGameMode

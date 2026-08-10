@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,16 +19,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,8 +56,21 @@ fun PredictionStatsCard(
     winCount: Int,
     totalCount: Int,
     winRate: Float,
+    onResetWinRate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // Calculate Breakdown: Jackpot Wins (exact digit match), Standard Wins, Losses
+    val jackpotWins = verifiedList.count { item ->
+        item.actualNumber != null &&
+                (item.primaryNumber == item.actualNumber || item.secondaryNumber == item.actualNumber)
+    }
+    val standardWins = (winCount - jackpotWins).coerceAtLeast(0)
+    val losses = (totalCount - winCount).coerceAtLeast(0)
+
+    val jackpotPct = if (totalCount > 0) (jackpotWins.toFloat() / totalCount) * 100f else 0f
+    val standardPct = if (totalCount > 0) (standardWins.toFloat() / totalCount) * 100f else 0f
+    val lossPct = if (totalCount > 0) (losses.toFloat() / totalCount) * 100f else 0f
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -93,7 +112,7 @@ fun PredictionStatsCard(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = LiveGreen.copy(alpha = 0.15f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LiveGreen.copy(alpha = 0.3f))
+                    border = BorderStroke(1.dp, LiveGreen.copy(alpha = 0.3f))
                 ) {
                     Text(
                         text = "${String.format(Locale.US, "%.1f", winRate)}% WIN RATE",
@@ -109,34 +128,185 @@ fun PredictionStatsCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Scoreboard Summary Cards
+            // Scoreboard Summary Cards (Grid of 4 Metrics)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(16.dp))
-                        .padding(12.dp),
+                        .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(14.dp))
+                        .padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("TOTAL VERIFIED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(totalCount.toString(), fontSize = 20.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                    Text("TOTAL", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(totalCount.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black, color = TextPrimary)
                 }
 
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(16.dp))
-                        .padding(12.dp),
+                        .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(14.dp))
+                        .padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("ACCURATE WINS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(winCount.toString(), fontSize = 20.sp, fontWeight = FontWeight.Black, color = LiveGreen)
+                    Text("WINS", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(standardWins.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black, color = LiveGreen)
                 }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(14.dp))
+                        .padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = NeonGold, modifier = Modifier.size(10.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("JACKPOT", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = NeonGold)
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(jackpotWins.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black, color = NeonGold)
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(14.dp))
+                        .padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("LOSSES", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(losses.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black, color = NeonRed)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // VISUAL ACCURACY DISTRIBUTION CHART
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ImmersiveCardBorder, RoundedCornerShape(14.dp))
+                    .background(ImmersiveBackground, RoundedCornerShape(14.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "ACCURACY DISTRIBUTION CHART",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 0.5.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Multi-Segment Proportion Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TextMuted.copy(alpha = 0.2f))
+                ) {
+                    if (totalCount > 0) {
+                        if (jackpotWins > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(jackpotWins.toFloat())
+                                    .height(10.dp)
+                                    .background(NeonGold)
+                            )
+                        }
+                        if (standardWins > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(standardWins.toFloat())
+                                    .height(10.dp)
+                                    .background(LiveGreen)
+                            )
+                        }
+                        if (losses > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(losses.toFloat())
+                                    .height(10.dp)
+                                    .background(NeonRed)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Chart Legend / Labels
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(8.dp).background(NeonGold, RoundedCornerShape(2.dp)))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Jackpot: ${jackpotWins} (${String.format(Locale.US, "%.0f", jackpotPct)}%)",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonGold
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(8.dp).background(LiveGreen, RoundedCornerShape(2.dp)))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Wins: ${standardWins} (${String.format(Locale.US, "%.0f", standardPct)}%)",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = LiveGreen
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(8.dp).background(NeonRed, RoundedCornerShape(2.dp)))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Losses: ${losses} (${String.format(Locale.US, "%.0f", lossPct)}%)",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonRed
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // RESET WIN RATE BUTTON
+            OutlinedButton(
+                onClick = onResetWinRate,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, NeonRed.copy(alpha = 0.4f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonRed)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Reset Win Rate",
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "RESET WIN RATE DATA",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

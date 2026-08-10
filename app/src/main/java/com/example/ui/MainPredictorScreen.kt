@@ -162,7 +162,8 @@ fun MainPredictorScreen(
                                     verifiedList = uiState.verifiedPredictions,
                                     winCount = uiState.winCount,
                                     totalCount = uiState.totalVerifiedCount,
-                                    winRate = uiState.winRatePercentage
+                                    winRate = uiState.winRatePercentage,
+                                    onResetWinRate = { viewModel.resetWinRateData() }
                                 )
 
                                 Spacer(modifier = Modifier.height(24.dp))
@@ -190,7 +191,8 @@ fun MainPredictorScreen(
                                     verifiedList = uiState.verifiedPredictions,
                                     winCount = uiState.winCount,
                                     totalCount = uiState.totalVerifiedCount,
-                                    winRate = uiState.winRatePercentage
+                                    winRate = uiState.winRatePercentage,
+                                    onResetWinRate = { viewModel.resetWinRateData() }
                                 )
 
                                 Spacer(modifier = Modifier.height(24.dp))
